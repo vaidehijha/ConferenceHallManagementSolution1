@@ -1,0 +1,94 @@
+﻿@rendermode InteractiveServer
+
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthStateProvider
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Conference Hall Mngmt</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="flex-column">
+
+        <AuthorizeView>
+            <NotAuthorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="login">
+                        <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+                        <span>Login</span>
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="" Match="NavLinkMatch.All">
+                        <i class="bi bi-house-door-fill" aria-hidden="true"></i>
+                        <span>Home</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="book-hall">
+                        <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+                        <span>Book Hall</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="my-bookings">
+                        <i class="bi bi-list-check" aria-hidden="true"></i>
+                        <span>My Bookings</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3 mt-3">
+                    <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Admin Panel</div>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="admin-bookings">
+                        <i class="bi bi-journal-text" aria-hidden="true"></i>
+                        <span>Booking Requests</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="manage-halls">
+                        <i class="bi bi-building" aria-hidden="true"></i>
+                        <span>Manage Halls</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/temployee">
+                        <i class="bi bi-people-fill" aria-hidden="true"></i>
+                        <span>Employee Roles</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3 mt-3">
+                    <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Master Settings</div>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/booking-status">
+                        <i class="bi bi-flag" aria-hidden="true"></i>
+                        <span>Status Master</span>
+                    </NavLink>
+                </div>
+
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/room-type">
+                        <i class="bi bi-door-open" aria-hidden="true"></i>
+                        <span>Room Types</span>
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+    </nav>
+</div>

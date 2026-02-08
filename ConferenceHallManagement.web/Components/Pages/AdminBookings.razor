@@ -1,0 +1,671 @@
+﻿@page "/admin-bookings"
+@rendermode InteractiveServer
+
+@using ConferenceHallManagement.web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+@using UoW_ConferenceHallManagement
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Text.RegularExpressions
+@using Microsoft.JSInterop
+
+@inject IUserBookingService BookingService
+@inject IUnitOfWork _uow
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavManager
+@inject IJSRuntime JSRuntime
+
+<style>
+    /* Screenshot-Matching Table Styles */
+    .admin-table-container {
+        background: #fff;
+        border-radius: 4px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
+
+    .admin-table {
+        font-size: 0.85rem;
+        border-collapse: collapse;
+        width: 100%;
+        border: 1px solid #e0e0e0;
+    }
+
+        .admin-table th {
+            background-color: #3f51b5; /* Matching the Blue Header */
+            color: white;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 12px 15px;
+            text-align: left;
+            border: none;
+            letter-spacing: 0.5px;
+        }
+
+        .admin-table td {
+            background-color: #fff;
+            border-bottom: 1px solid #f0f0f0;
+            padding: 12px 15px;
+            vertical-align: top; /* Align to top for multi-line content */
+            color: #444;
+        }
+
+    /* Column Specific Styles */
+    .hall-name {
+        color: #2196f3;
+        font-weight: 700;
+        font-size: 0.95rem;
+        text-decoration: none;
+        display: block;
+        margin-bottom: 4px;
+    }
+
+    .user-name-block {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .user-name-text {
+        font-weight: 700;
+        color: #222;
+        font-size: 0.9rem;
+    }
+
+    .user-meta {
+        font-size: 0.75rem;
+        color: #888;
+        display: block;
+    }
+
+    .program-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #333;
+    }
+
+    /* Badges */
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: white;
+        display: inline-block;
+        min-width: 100px;
+        text-align: center;
+        text-transform: capitalize;
+    }
+
+    .status-auto {
+        background-color: #00bcd4;
+    }
+
+    .status-approved {
+        background-color: #4caf50;
+    }
+
+    .status-pending {
+        background-color: #ff9800;
+    }
+
+    .status-rejected {
+        background-color: #f44336;
+    }
+
+    .status-completed {
+        background-color: #6c757d;
+    }
+
+    .btn-view {
+        color: #3f51b5;
+        font-weight: 700;
+        font-size: 0.8rem;
+        background: transparent;
+        border: 1px solid transparent;
+        padding: 5px 10px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+        .btn-view:hover {
+            background-color: #e8eaf6;
+            border-radius: 4px;
+            color: #2c3e50;
+        }
+
+    /* Modal Styles */
+    .detail-label {
+        font-size: 0.75rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin-bottom: 2px;
+    }
+
+    .detail-value {
+        font-size: 0.95rem;
+        color: #212529;
+        font-weight: 400;
+        margin-bottom: 1rem;
+    }
+
+    .modal-header-custom {
+        background-color: #3f51b5;
+        color: white;
+        padding: 1rem 1.5rem;
+    }
+
+    .btn-close-white {
+        filter: invert(1) grayscale(100%) brightness(200%);
+    }
+</style>
+
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0 fw-bold text-dark">
+            <i class="bi bi-journal-text me-2 text-primary"></i>Hall Booking Requests
+        </h4>
+        @if (!string.IsNullOrEmpty(UserRoleName))
+        {
+            <span class="badge bg-secondary">@UserRoleName</span>
+        }
+    </div>
+
+    @if (IsLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="mt-2 text-muted">Loading requests...</p>
+        </div>
+    }
+    else if (AllBookings == null || !AllBookings.Any())
+    {
+        <div class="alert alert-info text-center shadow-sm">No booking requests found.</div>
+    }
+    else
+    {
+        <div class="admin-table-container">
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 20%;">Hall Details</th>
+                            <th style="width: 10%;">Room Type</th>
+                            <th style="width: 15%;">Booked By</th>
+                            <th style="width: 15%;">Program Name</th>
+                            <th style="width: 5%; text-align: center;">Att.</th>
+                            <th style="width: 10%; text-align: center;">Dates</th>
+                            <th style="width: 15%;">Remarks</th>
+                            <th style="width: 10%; text-align: center;">Status</th>
+                            <th style="width: 5%; text-align: center;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in AllBookings)
+                        {
+                            // Logic: Check if Booking is Past
+                            bool isPastDate = false;
+                            if (DateTime.TryParse(item.ToDate, out DateTime endDate))
+                            {
+                                if (endDate.Date < DateTime.Today) { isPastDate = true; }
+                            }
+
+                            bool isPending = item.BookingStatus.Contains("Pending");
+                            bool showAutoApprove = isPastDate && isPending;
+
+                            <tr>
+                                <td>
+                                    <span class="hall-name">@item.HallName</span>
+                                    <span class="text-muted small">Sessions: @item.ActiveSessionsCount</span>
+                                </td>
+
+                                <td>
+                                    <span style="font-weight: 500; font-size: 0.85rem; color: #555;">@item.SeatingType</span>
+                                </td>
+
+                                <td>
+                                    <div class="user-name-block">
+                                        <span class="user-name-text">@item.BookedBy</span>
+
+                                        @if (!string.IsNullOrEmpty(item.EmpNo) && item.EmpNo != "N/A" && item.EmpNo != item.BookedBy)
+                                        {
+                                            <span class="user-meta">ID: @item.EmpNo</span>
+                                        }
+                                        else if (item.EmpNo == item.BookedBy)
+                                        {
+                                            <span class="user-meta">ID: @item.EmpNo</span>
+                                        }
+
+                                        <span class="user-meta">Ph: @item.BookedByPhone</span>
+                                    </div>
+                                </td>
+
+                                <td><span class="program-name">@item.ProgramName</span></td>
+
+                                <td class="text-center" style="font-weight: 600;">@item.Attendees</td>
+
+                                <td class="text-center">
+                                    <div style="line-height: 1.2;">
+                                        <span class="date-text">@item.FromDate</span>
+                                        <span style="font-size: 0.7rem; color: #999; display: block;">to</span>
+                                        <span class="date-text">@item.ToDate</span>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <small class="text-muted text-break">@GetCleanRemark(item.Remarks)</small>
+                                </td>
+
+                                <td class="text-center">
+                                    @if (showAutoApprove)
+                                    {
+                                        <span class="status-badge status-auto">Auto Approved</span>
+                                    }
+                                    else
+                                    {
+                                        string s = item.BookingStatus?.ToLower() ?? "";
+                                        string statusClass = "status-pending";
+                                        if (s.Contains("auto")) statusClass = "status-auto";
+                                        else if (s.Contains("approve")) statusClass = "status-approved";
+                                        else if (s.Contains("reject") || s.Contains("cancel")) statusClass = "status-rejected";
+
+                                        <span class="status-badge @statusClass">@item.BookingStatus</span>
+                                    }
+                                </td>
+
+                                <td class="text-center">
+                                    <button class="btn-view" @onclick="() => OpenAdminModal(item)">
+                                        <i class="bi bi-eye-fill"></i> VIEW
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@if (ShowModal && SelectedBooking != null)
+{
+    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header-custom d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold"><i class="bi bi-eye me-2"></i>Booking #@SelectedBooking.BookingId</h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                </div>
+                <div class="modal-body p-4">
+
+                    <div class="row">
+                        <div class="col-md-6"><div class="detail-label">Hall Name</div><div class="detail-value text-primary fw-bold">@SelectedBooking.HallName</div></div>
+                        <div class="col-md-6"><div class="detail-label">Room Type</div><div class="detail-value">@SelectedBooking.SeatingType</div></div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6"><div class="detail-label">Program Name</div><div class="detail-value">@SelectedBooking.ProgramName</div></div>
+                        <div class="col-md-6"><div class="detail-label">Number of Attendees</div><div class="detail-value">@SelectedBooking.Attendees</div></div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6"><div class="detail-label">From Date</div><div class="detail-value">@SelectedBooking.FromDate</div></div>
+                        <div class="col-md-6"><div class="detail-label">To Date</div><div class="detail-value">@SelectedBooking.ToDate</div></div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="detail-label">Booked By</div>
+                            <div class="detail-value">
+                                <div class="fw-bold">@SelectedBooking.BookedBy</div>
+                                <div class="small text-muted">ID: @SelectedBooking.EmpNo</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="detail-label">Phone</div>
+                            <div class="detail-value">@SelectedBooking.BookedByPhone</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="detail-label">Remarks</div>
+                            <div class="detail-value bg-light p-2 rounded border">
+                                @GetCleanRemark(SelectedBooking.Remarks)
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr class="my-4" />
+                    <h6 class="fw-bold mb-3 text-secondary">Session Breakdown</h6>
+
+                    @if (SelectedBooking.SessionDetails != null && SelectedBooking.SessionDetails.Any())
+                    {
+                        <table class="table table-sm table-bordered text-center small mb-0 align-middle">
+                            <thead class="table-light"><tr><th>Date</th><th>Slot</th><th>Status</th><th>Action</th></tr></thead>
+                            <tbody>
+                                @foreach (var session in SelectedBooking.SessionDetails)
+                                {
+                                    bool isPastDate = session.Date.Date < DateTime.Today;
+                                    bool isPending = session.StatusCode == 1;
+
+                                    <tr>
+                                        <td>@session.DisplayDate</td>
+                                        <td>@session.SessionTime</td>
+                                        <td>
+                                            @if (isPastDate && isPending)
+                                            {
+                                                <span class="badge bg-info text-white">Auto Approved</span>
+                                            }
+                                            else if (session.StatusCode == 1)
+                                            {
+
+                                                <span class="text-warning fw-bold">Pending</span>
+                                            }
+                                            else if (session.StatusCode == 2)
+                                            {
+
+                                                <span class="text-success fw-bold">Approved</span>
+                                            }
+                                            else
+                                            {
+
+                                                <span class="text-muted">@session.Status</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (isPastDate)
+                                            {
+                                                <span class="badge bg-secondary">Completed</span>
+                                            }
+                                            else if (CanApproveReject && isPending)
+                                            {
+                                                <button class="btn btn-success btn-sm py-0 px-2 me-1" @onclick="() => ApproveSession(session.RecordId)">Approve</button>
+                                                <button class="btn btn-danger btn-sm py-0 px-2" @onclick="() => RejectSession(session.RecordId)">Reject</button>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted small">-</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <div class="text-center text-muted small py-3">No session details available.</div>
+                    }
+                </div>
+                <div class="modal-footer py-2 bg-light">
+                    @if (CanApproveReject && SelectedBooking.BookingStatus.Contains("Pending"))
+                    {
+                        <button class="btn btn-success px-4 fw-bold me-2" @onclick="ApproveEntireBooking">
+                            <i class="bi bi-check-circle me-1"></i> Approve Entire Booking
+                        </button>
+                        <button class="btn btn-danger px-4 fw-bold me-2" @onclick="RejectEntireBooking">
+                            <i class="bi bi-x-circle me-1"></i> Reject Entire Booking
+                        </button>
+                    }
+                    <button class="btn btn-secondary px-4 fw-bold" @onclick="CloseModal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public class AdminBookingDTO : BookingListVM
+    {
+        public string EmpNo { get; set; } = "";
+        public string BookedByPhone { get; set; } = "";
+    }
+
+    private List<AdminBookingDTO> AllBookings { get; set; } = new();
+    private bool ShowModal = false;
+    private AdminBookingDTO? SelectedBooking;
+    private bool IsLoading = true;
+    private bool CanApproveReject = false;
+    private string UserRoleName = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAdminData();
+    }
+
+    private async Task LoadAdminData()
+    {
+        try
+        {
+            IsLoading = true;
+            StateHasChanged();
+            
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            if (user.Identity != null && user.Identity.IsAuthenticated)
+            {
+                var empNoClaim = user.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+                string empNo = empNoClaim?.Value ?? "";
+
+                if (!string.IsNullOrEmpty(empNo))
+                {
+                    var roleInfo = await _uow.EmpRole.GetUserRoleDetailsAsync(empNo);
+                    if (roleInfo != null)
+                    {
+                        UserRoleName = roleInfo.MasterRole?.RoleName ?? "Admin";
+                        CanApproveReject = (roleInfo.RoleId >= 1 && roleInfo.RoleId <= 4);
+
+                        var entities = await _uow.ConferenceHallBookingDataRepository
+                            .GetFilteredBookings(roleInfo.RoleId, roleInfo.RegionId, roleInfo.LocationId);
+
+                        AllBookings = entities.Select(e => new AdminBookingDTO
+                        {
+                            BookingId = e.BookingId,
+                            HallName = e.Hall?.HallNameEn ?? "Unknown Hall",
+
+                            // FIX: Access RoomType directly from Booking entity (Not from Hall)
+                            SeatingType = e.RoomType != null ? e.RoomType.RoomTypeEn : "Standard",
+
+                            BookedBy = e.CreatedBy ?? "Unknown",
+                            EmpNo = e.CreatedBy ?? "N/A",
+                            BookedByPhone = ParsePhoneFromRemarks(e.Remarks),
+                            ProgramName = e.ProgramName ?? "Meeting",
+
+                            // Correct DB Column
+                            Attendees = e.NoOfAttendees,
+
+                            FromDate = e.ConferenceHallBookingSessions.Any() ? e.ConferenceHallBookingSessions.Min(s => s.BookingDate).ToString("dd-MMM-yyyy") : "-",
+                            ToDate = e.ConferenceHallBookingSessions.Any() ? e.ConferenceHallBookingSessions.Max(s => s.BookingDate).ToString("dd-MMM-yyyy") : "-",
+                            Remarks = e.Remarks,
+                            BookingStatus = e.StatusNavigation != null ? e.StatusNavigation.StatusTextEn : "Pending",
+                            ActiveSessionsCount = e.ConferenceHallBookingSessions.Count,
+
+                            SessionDetails = e.ConferenceHallBookingSessions.Select(s => new BookingSessionDetailVM
+                            {
+                                RecordId = s.Id,
+                                Date = s.BookingDate,
+                                SessionTime = s.Session != null ? s.Session.SessionEn : "Slot",
+                                Status = s.StatusNavigation != null ? s.StatusNavigation.StatusTextEn : "Pending",
+                                StatusCode = s.Status
+                            }).ToList()
+
+                        }).OrderByDescending(b => b.BookingId).ToList();
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string ParsePhoneFromRemarks(string remarks)
+    {
+        if (string.IsNullOrEmpty(remarks)) return "N/A";
+        if (remarks.Contains("|") && remarks.Trim().StartsWith("Phone:"))
+        {
+            try { return remarks.Split('|')[0].Replace("Phone:", "").Trim(); } catch { return "N/A"; }
+        }
+        return "N/A";
+    }
+
+    private string GetCleanRemark(string rawRemark)
+    {
+        if (string.IsNullOrEmpty(rawRemark)) return "-";
+        string cleanRemark = rawRemark;
+
+        if (cleanRemark.Contains("|") && cleanRemark.Trim().StartsWith("Phone:"))
+        {
+            var parts = cleanRemark.Split('|');
+            cleanRemark = parts.Length > 1 ? parts[1].Trim() : "";
+        }
+
+        int bracketIndex = cleanRemark.IndexOf("[");
+        if (bracketIndex > 0)
+        {
+            cleanRemark = cleanRemark.Substring(0, bracketIndex).Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(cleanRemark) ? "-" : cleanRemark;
+    }
+
+    private void OpenAdminModal(AdminBookingDTO item) { SelectedBooking = item; ShowModal = true; }
+    private void CloseModal() { ShowModal = false; SelectedBooking = null; }
+
+    private async Task ApproveSession(int sessionId)
+    {
+        try
+        {
+            var success = await BookingService.UpdateSessionStatusAsync(sessionId, 2);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Session approved successfully!");
+                var bookingId = SelectedBooking?.BookingId;
+                await LoadAdminData();
+                
+                // Update the selected booking with refreshed data if modal is still open
+                if (bookingId.HasValue && ShowModal)
+                {
+                    SelectedBooking = AllBookings.FirstOrDefault(b => b.BookingId == bookingId.Value);
+                    StateHasChanged();
+                }
+                else
+                {
+                    CloseModal();
+                }
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to approve session. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task RejectSession(int sessionId)
+    {
+        try
+        {
+            var success = await BookingService.UpdateSessionStatusAsync(sessionId, 4);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Session rejected successfully!");
+                var bookingId = SelectedBooking?.BookingId;
+                await LoadAdminData();
+                
+                // Update the selected booking with refreshed data if modal is still open
+                if (bookingId.HasValue && ShowModal)
+                {
+                    SelectedBooking = AllBookings.FirstOrDefault(b => b.BookingId == bookingId.Value);
+                    StateHasChanged();
+                }
+                else
+                {
+                    CloseModal();
+                }
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to reject session. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task ApproveEntireBooking()
+    {
+        if (SelectedBooking == null) return;
+
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                $"Are you sure you want to approve Booking #{SelectedBooking.BookingId} and all its pending sessions?");
+            
+            if (!confirmed) return;
+
+            var success = await BookingService.ApproveBookingAsync(SelectedBooking.BookingId);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Booking approved successfully!");
+                await LoadAdminData();
+                CloseModal();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to approve booking. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task RejectEntireBooking()
+    {
+        if (SelectedBooking == null) return;
+
+        try
+        {
+            var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+                $"Are you sure you want to reject Booking #{SelectedBooking.BookingId} and all its pending sessions?");
+            
+            if (!confirmed) return;
+
+            var success = await BookingService.RejectBookingAsync(SelectedBooking.BookingId);
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Booking rejected successfully!");
+                await LoadAdminData();
+                CloseModal();
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to reject booking. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+}

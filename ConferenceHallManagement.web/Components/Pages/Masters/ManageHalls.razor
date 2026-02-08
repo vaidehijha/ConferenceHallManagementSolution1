@@ -1,0 +1,456 @@
+﻿@page "/manage-halls"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@using System.ComponentModel.DataAnnotations
+@using ConferenceHallManagement.web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+@using Microsoft.AspNetCore.Authorization
+
+@attribute [Authorize]
+@inject NavigationManager Navigation
+@inject IHallConfigurationService _hallService
+@inject IMasterDataService _masterService
+@inject IJSRuntime JS
+
+<PageTitle>Manage Conference Halls</PageTitle>
+
+<style>
+    /* Styling */
+    .page-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .page-title {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #2c3e50;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .count-badge {
+        background-color: #0d6efd;
+        color: white;
+        font-size: 0.9rem;
+        padding: 2px 8px;
+        border-radius: 6px;
+        vertical-align: top;
+    }
+
+    .admin-table {
+        font-size: 0.9rem;
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+
+        .admin-table th {
+            background-color: #212529;
+            color: white;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.8rem;
+        }
+
+        .admin-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            vertical-align: middle;
+            color: #333;
+            background: #fff;
+        }
+
+    .btn-action {
+        border: none;
+        background: transparent;
+        padding: 5px;
+        color: #6c757d;
+        transition: 0.2s;
+    }
+
+        .btn-action:hover {
+            transform: scale(1.1);
+        }
+
+    .form-card {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        overflow: hidden;
+        border: 1px solid #dee2e6;
+    }
+
+    .form-header {
+        background-color: #0d6efd;
+        color: white;
+        padding: 15px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 600;
+    }
+
+    .form-body {
+        padding: 25px;
+    }
+
+    .form-label {
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        color: #555;
+        margin-bottom: 5px;
+        display: block;
+    }
+
+    .required-star {
+        color: #dc3545;
+        margin-left: 3px;
+        font-weight: bold;
+    }
+
+    .form-control, .form-select {
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+        padding: 10px;
+        font-size: 0.95rem;
+    }
+</style>
+
+<div class="container-fluid py-4">
+
+    @if (!IsFormVisible)
+    {
+        /* --- LIST VIEW --- */
+        <div class="page-header-row">
+            <div>
+                <h2 class="page-title">
+                    <i class="bi bi-building"></i> Manage Halls
+                    <span class="count-badge">@HallList.Count</span>
+                </h2>
+                <p class="text-muted mb-0">Configure and manage conference hall settings</p>
+            </div>
+            <button class="btn btn-success btn-lg shadow" @onclick="SwitchToCreateMode">
+                <i class="bi bi-plus-circle-fill me-2"></i> Add New Hall
+            </button>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-3">Loading halls...</p></div>
+        }
+        else if (!HallList.Any())
+        {
+            <div class="alert alert-info text-center">No active halls found.</div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Hall Name</th>
+                            <th>Floor</th>
+                            <th>Capacity</th>
+                            <th>Region</th>
+                            <th>Location</th>
+                            <th>Admin Approval</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var hall in HallList)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="fw-bold text-primary">@hall.HallName</div>
+                                    <div class="small text-muted">@hall.HallNameHindi</div>
+                                </td>
+                                <td>@hall.Floor</td>
+                                <td><span class="badge bg-secondary">@hall.Capacity</span></td>
+                                <td>@hall.RegionName</td>
+                                <td>@hall.LocationName</td>
+                                <td>
+                                    @if (hall.IsAdminApprovalRequired)
+                                    {
+                                        <span class="badge bg-info text-dark">Required</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Not Required</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn-action text-primary" title="Edit" @onclick="() => EditHall(hall.Id)">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                    <button class="btn-action text-danger" title="Delete" @onclick="() => DeleteHall(hall.Id, hall.HallName)">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    else
+    {
+        /* --- CREATE / EDIT FORM VIEW --- */
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="form-card">
+                    <div class="form-header">
+                        <span><i class="bi @(IsEditMode ? "bi-pencil-square" : "bi-plus-square") me-2"></i>@(IsEditMode ? "Edit Hall" : "Create New Hall")</span>
+                        <button class="btn btn-outline-light btn-sm fw-bold" @onclick="SwitchToListMode">
+                            <i class="bi bi-arrow-left me-1"></i> BACK TO LIST
+                        </button>
+                    </div>
+
+                    <EditForm Model="@CurrentHall" OnValidSubmit="SaveHall">
+                        <DataAnnotationsValidator />
+
+                        <div class="form-body">
+                            <h6 class="text-primary fw-bold mb-4">Master Conference Hall Details</h6>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Hall Name (English) <span class="required-star">*</span></label>
+                                    <InputText class="form-control" placeholder="Ex: Grand Hall" @bind-Value="CurrentHall.HallName" />
+                                    <ValidationMessage For="@(() => CurrentHall.HallName)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Hall Name (Hindi)</label>
+                                    <InputText class="form-control" placeholder="Ex: ग्रैंड हॉल" @bind-Value="CurrentHall.HallNameHindi" />
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">At Floor <span class="required-star">*</span></label>
+                                    <InputText class="form-control" placeholder="Ex: 5th Floor" @bind-Value="CurrentHall.Floor" />
+                                    <ValidationMessage For="@(() => CurrentHall.Floor)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Hall Capacity <span class="required-star">*</span></label>
+                                    <InputNumber class="form-control" placeholder="0" @bind-Value="CurrentHall.Capacity" />
+                                    <ValidationMessage For="@(() => CurrentHall.Capacity)" class="text-danger small" />
+                                </div>
+                                <div class="col-md-4 d-flex align-items-center pt-4">
+                                    <div class="form-check form-switch">
+                                        <InputCheckbox class="form-check-input" type="checkbox" id="adminApprove" @bind-Value="CurrentHall.IsAdminApprovalRequired" />
+                                        <label class="form-check-label ms-2" for="adminApprove">Admin Approval Required</label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row mb-4">
+                                <div class="col-md-6">
+                                    <label class="form-label">Region <span class="required-star">*</span></label>
+                                    <select class="form-select" value="@CurrentHall.RegionId" @onchange="OnRegionChanged">
+                                        <option value="0">-- Select Region --</option>
+                                        @foreach (var reg in RegionList)
+                                        {
+                                            <option value="@reg.Id">@reg.RegionName</option>
+                                        }
+                                    </select>
+                                    @if (IsRegionError)
+                                    {
+                                        <span class="text-danger small">Region is required.</span>
+                                    }
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label">Location <span class="required-star">*</span></label>
+                                    <InputSelect class="form-select" @bind-Value="CurrentHall.LocationId" disabled="@(!FilteredLocations.Any())">
+                                        <option value="0">-- Select Location --</option>
+                                        @foreach (var loc in FilteredLocations)
+                                        {
+                                            <option value="@loc.Id">@loc.LocationName</option>
+                                        }
+                                    </InputSelect>
+                                    <ValidationMessage For="@(() => CurrentHall.LocationId)" class="text-danger small" />
+                                </div>
+                            </div>
+
+                            <hr />
+                            <div class="d-flex justify-content-end gap-2">
+                                <button type="button" class="btn btn-secondary fw-bold px-4" @onclick="SwitchToListMode">CANCEL</button>
+                                <button type="submit" class="btn btn-success fw-bold px-4">
+                                    <i class="bi bi-check-circle me-2"></i> @(IsEditMode ? "UPDATE HALL" : "CREATE HALL")
+                                </button>
+                            </div>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    // STATE VARIABLES
+    private bool IsFormVisible = false;
+    private bool IsEditMode = false;
+    private bool isLoading = true;
+    private bool IsRegionError = false;
+
+    // Now using the Shared ViewModel (No local classes)
+    private List<HallConfigurationVM> HallList = new();
+    private List<MasterRegion> RegionList = new();
+    private List<MasterLocation> AllLocations = new();
+    private List<MasterLocation> FilteredLocations = new();
+
+    private HallConfigurationVM CurrentHall { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllData();
+    }
+
+    private async Task LoadAllData()
+    {
+        try
+        {
+            isLoading = true;
+
+            // 1. Dropdowns from MasterService
+            RegionList = await _masterService.GetAllRegionsAsync();
+            AllLocations = await _masterService.GetAllLocationsAsync();
+
+            // 2. Halls from HallService (Returns List<HallConfigurationVM> directly)
+            HallList = await _hallService.GetAllHallsAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    // --- NAVIGATION ---
+
+    private void SwitchToCreateMode()
+    {
+        CurrentHall = new HallConfigurationVM();
+        FilteredLocations = new();
+        IsEditMode = false;
+        IsFormVisible = true;
+    }
+
+    private async Task EditHall(int id)
+    {
+        try
+        {
+            // Fetch fresh data from Service
+            var hall = await _hallService.GetHallByIdAsync(id);
+            if (hall != null)
+            {
+                CurrentHall = hall;
+
+                // Trigger cascading manually to fill Location dropdown
+                if (CurrentHall.RegionId > 0)
+                {
+                    FilteredLocations = await _masterService.GetLocationsByRegionAsync(CurrentHall.RegionId);
+                }
+
+                IsEditMode = true;
+                IsFormVisible = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error loading hall details.");
+        }
+    }
+
+    private void SwitchToListMode()
+    {
+        IsFormVisible = false;
+        IsRegionError = false;
+    }
+
+    // --- LOGIC ---
+
+    private async Task OnRegionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int rId) && rId > 0)
+        {
+            CurrentHall.RegionId = rId;
+            // Cascading via Service
+            FilteredLocations = await _masterService.GetLocationsByRegionAsync(rId);
+            CurrentHall.LocationId = 0; // Reset location
+            IsRegionError = false;
+        }
+        else
+        {
+            CurrentHall.RegionId = 0;
+            FilteredLocations = new();
+        }
+    }
+
+    private async Task SaveHall()
+    {
+        if (CurrentHall.RegionId == 0) { IsRegionError = true; return; }
+
+        try
+        {
+            bool success = false;
+            if (IsEditMode)
+            {
+                success = await _hallService.UpdateHallAsync(CurrentHall);
+            }
+            else
+            {
+                success = await _hallService.CreateHallAsync(CurrentHall);
+            }
+
+            if (success)
+            {
+                await JS.InvokeVoidAsync("alert", IsEditMode ? "Hall Updated Successfully!" : "Hall Created Successfully!");
+                await LoadAllData();
+                SwitchToListMode();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Operation Failed. Please check logs.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", "Error processing request.");
+        }
+    }
+
+    private async Task DeleteHall(int id, string name)
+    {
+        bool confirm = await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{name}'?");
+        if (confirm)
+        {
+            bool success = await _hallService.DeleteHallAsync(id);
+            if (success)
+            {
+                await JS.InvokeVoidAsync("alert", "Hall Deleted Successfully!");
+                await LoadAllData();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Failed to delete hall.");
+            }
+        }
+    }
+}

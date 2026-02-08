@@ -1,0 +1,272 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+
+@using Models_ConferenceHallManagement.AppDbModels
+@using UoW_ConferenceHallManagement
+@using System.Security.Claims
+
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUnitOfWork _uow
+
+<PageTitle>Home - Conference Hall Management</PageTitle>
+
+<style>
+    .hover-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        cursor: pointer;
+    }
+
+        .hover-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important;
+        }
+</style>
+
+<div class="container-fluid py-3">
+
+    @if (IsLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Checking permissions...</p>
+        </div>
+    }
+    else if (!IsAuthenticated)
+    {
+        <div class="text-center py-5">
+            <p>Redirecting to login...</p>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3>Welcome, <span class="text-primary">@LoggedInEmpName</span></h3>
+            @if (CurrentUserRoleData != null && CurrentUserRoleData.MasterRole != null)
+            {
+                <span class="badge bg-secondary">
+                    @CurrentUserRoleData.MasterRole.RoleName
+                    @if (!string.IsNullOrEmpty(UserRegion))
+                    {
+                        <span>(Reg: @UserRegion)</span>
+                    }
+                </span>
+            }
+        </div>
+
+        <h5 class="text-muted border-bottom pb-2">Employee Services</h5>
+        <div class="row g-3 mb-5">
+            <div class="col-md-6 col-lg-3">
+                <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("book-hall")'>
+                    <div class="card-body text-center p-3">
+                        <div class="mb-2">
+                            <i class="bi bi-calendar-plus text-primary" style="font-size: 2.5rem;"></i>
+                        </div>
+                        <h5 class="card-title text-primary mb-2">Book Hall</h5>
+                        <p class="card-text text-muted small mb-2">
+                            Reserve a conference hall.
+                        </p>
+                        <button class="btn btn-primary btn-sm px-4">Book Now</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-lg-3">
+                <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("my-bookings")'>
+                    <div class="card-body text-center p-3">
+                        <div class="mb-2">
+                            <i class="bi bi-list-check text-success" style="font-size: 2.5rem;"></i>
+                        </div>
+                        <h5 class="card-title text-success mb-2">My Bookings</h5>
+                        <p class="card-text text-muted small mb-2">
+                            Manage your bookings.
+                        </p>
+                        <button class="btn btn-success btn-sm px-4">View Bookings</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (IsAdmin)
+        {
+            <h5 class="text-muted border-bottom pb-2">Admin Panel</h5>
+            <div class="row g-3 mb-5">
+
+                <div class="col-md-4">
+                    <div class="card shadow-sm border-0 h-100 hover-card border-warning" @onclick='() => NavigateTo("admin-bookings")'>
+                        <div class="card-body text-center p-3">
+                            <div class="mb-2">
+                                <i class="bi bi-journal-text text-warning" style="font-size: 2rem;"></i>
+                            </div>
+                            <h5 class="card-title text-dark mb-2">Booking Requests</h5>
+                            <p class="card-text text-muted small mb-2">View and manage requests.</p>
+                            <button class="btn btn-warning btn-sm text-white">View Requests</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("manage-halls")'>
+                        <div class="card-body text-center p-3">
+                            <div class="mb-2">
+                                <i class="bi bi-building text-info" style="font-size: 2rem;"></i>
+                            </div>
+                            <h5 class="card-title text-info mb-2">Manage Halls</h5>
+                            <p class="card-text text-muted small mb-2">Add or Edit Halls.</p>
+                            <button class="btn btn-info btn-sm text-white">Manage Halls</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("masters/temployee")'>
+                        <div class="card-body text-center p-3">
+                            <div class="mb-2">
+                                <i class="bi bi-people text-success" style="font-size: 2rem;"></i>
+                            </div>
+                            <h5 class="card-title text-success mb-2">Employee Roles</h5>
+                            <p class="card-text text-muted small mb-2">Assign roles & permissions.</p>
+                            <button class="btn btn-success btn-sm">Manage Roles</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (IsSuperAdmin)
+        {
+            <h5 class="text-muted border-bottom pb-2">Master Settings</h5>
+            <div class="row g-3">
+
+                <div class="col-md-4">
+                    <div class="card shadow-sm border-0 h-100 hover-card border-warning" @onclick='() => NavigateTo("masters/booking-status")'>
+                        <div class="card-body text-center p-3">
+                            <div class="mb-2">
+                                <i class="bi bi-flag text-warning" style="font-size: 2rem;"></i>
+                            </div>
+                            <h5 class="card-title text-warning mb-2">Status Master</h5>
+                            <p class="card-text text-muted small mb-2">Configure status types.</p>
+                            <button class="btn btn-warning btn-sm">Manage Status</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-4">
+                    <div class="card shadow-sm border-0 h-100 hover-card border-danger" @onclick='() => NavigateTo("masters/room-type")'>
+                        <div class="card-body text-center p-3">
+                            <div class="mb-2">
+                                <i class="bi bi-door-open text-danger" style="font-size: 2rem;"></i>
+                            </div>
+                            <h5 class="card-title text-danger mb-2">Room Types</h5>
+                            <p class="card-text text-muted small mb-2">Manage room categories.</p>
+                            <button class="btn btn-danger btn-sm">Manage Types</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private bool IsLoading = true;
+    private bool IsAuthenticated = false;
+    private string LoggedInEmpName = "User";
+
+    private EmpRole? CurrentUserRoleData;
+    private string? UserRegion;
+    private string? UserLocation;
+
+    private bool IsAdmin = false;
+    private bool IsSuperAdmin = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadUserData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadUserData()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user?.Identity?.IsAuthenticated == true)
+        {
+            IsAuthenticated = true;
+
+            // --- YAHAN MAIN CHANGE HUA HAI ---
+            // Pehle: user.Identity.Name (Jo ki "Super Admin" naam tha)
+            // Ab: NameIdentifier (Jo ki "10000001" ID hai)
+
+            LoggedInEmpName = user.Identity.Name ?? "User"; // Display ke liye Name thik hai
+
+            // DB Query ke liye ID nikalo
+            var empNoClaim = user.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+            string empIdForDb = empNoClaim?.Value ?? "";
+
+            try
+            {
+                // Ab hum asli ID ("10000001") bhej rahe hain
+                CurrentUserRoleData = await _uow.EmpRole.GetUserRoleDetailsAsync(empIdForDb);
+
+                if (CurrentUserRoleData != null)
+                {
+                    SetupDashboardPermissions(CurrentUserRoleData);
+
+                    if (CurrentUserRoleData.Region != null)
+                        UserRegion = CurrentUserRoleData.Region.RegionName;
+
+                    if (CurrentUserRoleData.Location != null)
+                        UserLocation = CurrentUserRoleData.Location.LocationName;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching roles: {ex.Message}");
+            }
+        }
+        else
+        {
+            Navigation.NavigateTo("login", true);
+        }
+
+        IsLoading = false;
+    }
+
+    private void SetupDashboardPermissions(EmpRole roleData)
+    {
+        int rid = roleData.RoleId;
+
+        // Roles 1, 2, 3, 4 are Admins
+        if (rid >= 1 && rid <= 4)
+        {
+            IsAdmin = true;
+        }
+        else
+        {
+            IsAdmin = false;
+        }
+
+        // Role 1 is Super Admin
+        if (rid == 1)
+        {
+            IsSuperAdmin = true;
+        }
+        else
+        {
+            IsSuperAdmin = false;
+        }
+    }
+
+    private void NavigateTo(string url)
+    {
+        Navigation.NavigateTo(url);
+    }
+}

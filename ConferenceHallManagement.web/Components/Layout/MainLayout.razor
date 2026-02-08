@@ -1,0 +1,40 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <AuthorizeView>
+                <Authorized>
+                    <div class="ms-auto d-flex align-items-center gap-3">
+                        <span class="text-dark fw-bold">Welcome, @context.User.Identity?.Name</span>
+                        <a href="/Account/Logout" class="btn btn-danger btn-sm" title="Logout">
+                            <i class="bi bi-power text-white"></i>
+                        </a>
+                    </div>
+                </Authorized>
+                <NotAuthorized>
+                    <div class="ms-auto">
+                        <a href="/login" class="text-white">Login</a>
+                    </div>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+<div id="blazor-error-ui">
+    An unhandled error has occurred.
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
+</div>
+

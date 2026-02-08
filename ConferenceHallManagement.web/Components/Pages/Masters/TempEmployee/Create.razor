@@ -1,0 +1,154 @@
+﻿@page "/masters/temployee/create"
+@rendermode InteractiveServer
+@using ConferenceHallManagement.Web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using UoW_ConferenceHallManagement
+
+@inject ITempEmployeeRoleBlazorService Service
+@inject IMasterDataService MasterService
+@inject IUnitOfWork _uow
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+
+<div class="container mt-4">
+    <div class="card shadow-sm border-0" style="max-width: 600px; margin: auto;">
+        <div class="card-header bg-white border-bottom py-3">
+            <h5 class="mb-0 fw-bold text-primary"><i class="bi bi-person-plus me-2"></i>Add Employee Role</h5>
+        </div>
+        <div class="card-body p-4">
+            <EditForm Model="model" OnValidSubmit="Save">
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">EMPLOYEE NUMBER <span class="text-danger">*</span></label>
+                    <InputText @bind-Value="model.EmployeeNo" class="form-control" placeholder="e.g. 60020656" />
+                    <ValidationMessage For="@(() => model.EmployeeNo)" />
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">REGION <span class="text-danger">*</span></label>
+                    <select class="form-select" value="@model.RegionId" @onchange="OnRegionChange">
+                        <option value="0">-- Select Region --</option>
+                        @foreach (var r in Regions)
+                        {
+                            <option value="@r.Id">@r.RegionName</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">LOCATION <span class="text-danger">*</span></label>
+                    <InputSelect @bind-Value="model.LocationId" class="form-select" disabled="@(!Locations.Any())">
+                        <option value="0">-- Select Location --</option>
+                        @foreach (var l in Locations)
+                        {
+                            <option value="@l.Id">@l.LocationName</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-muted">ASSIGN ROLE <span class="text-danger">*</span></label>
+                    <InputSelect @bind-Value="model.RoleId" class="form-select">
+                        <option value="0">-- Select Role --</option>
+                        @foreach (var role in AllowedRoles)
+                        {
+                            <option value="@role.Id">@role.RoleName</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="@(() => model.RoleId)" />
+                </div>
+
+                <div class="form-check form-switch mb-4">
+                    <InputCheckbox @bind-Value="model.IsActive" class="form-check-input" />
+                    <label class="form-check-label fw-bold small">Active Status</label>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 pt-2 border-top">
+                    <button type="button" class="btn btn-light text-muted" @onclick='() => Navigation.NavigateTo("/masters/temployee")'>Cancel</button>
+                    <button type="submit" class="btn btn-success px-4" disabled="@isSaving">Save Assignment</button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    private TempEmployeeRoleVM model = new() { IsActive = true };
+    private bool isSaving = false;
+    private List<MasterRegion> Regions = new();
+    private List<MasterLocation> Locations = new();
+
+    // Yahan humne list ko Strongly Typed banaya hai (MasterRole)
+    private List<MasterRole> AllowedRoles = new();
+    private int CurrentUserRoleId = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Logged in user ka role le rahe hain
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var roleClaim = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+
+        // Role ID Logic
+        if (roleClaim == "Super Admin") CurrentUserRoleId = 1;
+        else if (roleClaim == "Central Admin") CurrentUserRoleId = 2;
+        else if (roleClaim == "Regional Admin") CurrentUserRoleId = 3;
+        else if (roleClaim == "Station Admin") CurrentUserRoleId = 4;
+
+        // 2. Regions Load karein
+        Regions = await MasterService.GetAllRegionsAsync();
+
+        // 3. Roles Load aur Filter karein (Direct Database Repo se)
+        var allDbRoles = await _uow.MasterRoleDataRepository.GetAllAsync();
+
+        // Hierarchy logic: Super Admin sab dekh sakta hai (1,2,3,4,5)
+        // Baki log sirf apna level ya niche ka level dekh sakte hain
+        AllowedRoles = allDbRoles
+            .Where(r => r.Id >= CurrentUserRoleId || r.Id == 5) // 5 Employee role ke liye
+            .OrderBy(r => r.Id)
+            .ToList();
+
+        StateHasChanged();
+    }
+
+    private async Task OnRegionChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int id) && id > 0)
+        {
+            model.RegionId = id;
+            Locations = await MasterService.GetLocationsByRegionAsync(id);
+            model.LocationId = 0;
+        }
+        else
+        {
+            model.RegionId = 0;
+            Locations = new();
+        }
+    }
+
+    private async Task Save()
+    {
+        if (model.RegionId == 0 || model.LocationId == 0 || model.RoleId == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Please fill all required fields.");
+            return;
+        }
+
+        isSaving = true;
+        var result = await Service.CreateAsync(model);
+        if (result > 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Role Added Successfully!");
+            Navigation.NavigateTo("/masters/temployee");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("alert", "Failed to add role.");
+        }
+        isSaving = false;
+    }
+}

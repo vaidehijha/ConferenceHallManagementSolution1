@@ -1,0 +1,520 @@
+﻿@page "/hall-configuration/create"
+@page "/hall-configuration/edit/{Id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+@using ConferenceHallManagement.web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+
+@inject IHallConfigurationService Service
+@inject IUserBookingService BookingService
+@inject IMasterDataService MasterService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>@(Id == 0 ? "Create Hall" : "Edit Hall")</PageTitle>
+
+<style>
+    /* Styling restored from your code */
+    .form-label {
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        color: #555;
+        margin-bottom: 5px;
+        display: block;
+    }
+
+    .required-star {
+        color: #dc3545;
+        margin-left: 3px;
+        font-weight: bold;
+    }
+
+    .form-control, .form-select {
+        border-radius: 4px;
+        border: 1px solid #ced4da;
+        padding: 10px;
+        font-size: 0.95rem;
+    }
+
+    .card-header {
+        font-weight: 600;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="card shadow border-0">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@(Id == 0 ? "Create New Hall" : "Edit Hall Configuration")</h5>
+            <button class="btn btn-sm btn-light text-primary fw-bold" @onclick="GoBack">
+                <i class="bi bi-arrow-left"></i> Back to List
+            </button>
+        </div>
+        <div class="card-body bg-light">
+
+            <EditForm Model="@hallVM" OnValidSubmit="HandleSave">
+                <DataAnnotationsValidator />
+
+                @* --- SECTION 1: HALL DETAILS --- *@
+                <div class="card mb-4 shadow-sm">
+                    <div class="card-header bg-white text-primary fw-bold">
+                        Master Conference Hall Details
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Hall Name (English) <span class="required-star">*</span></label>
+                                <InputText @bind-Value="hallVM.HallName" class="form-control" placeholder="Ex: Grand Hall" />
+                                <ValidationMessage For="@(() => hallVM.HallName)" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Hall Name (Hindi)</label>
+                                <InputText @bind-Value="hallVM.HallNameHindi" class="form-control" placeholder="Ex: ग्रैंड हॉल" />
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label class="form-label">At Floor <span class="required-star">*</span></label>
+                                <InputText @bind-Value="hallVM.Floor" class="form-control" placeholder="Ex: 5th Floor" />
+                                <ValidationMessage For="@(() => hallVM.Floor)" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Hall Capacity <span class="required-star">*</span></label>
+                                <InputNumber @bind-Value="hallVM.Capacity" class="form-control" />
+                                <ValidationMessage For="@(() => hallVM.Capacity)" />
+                            </div>
+                            <div class="col-md-4 d-flex align-items-center pt-4">
+                                <div class="form-check form-switch">
+                                    <InputCheckbox @bind-Value="hallVM.IsAdminApprovalRequired" class="form-check-input" id="approvalSwitch" />
+                                    <label class="form-check-label fw-bold ms-2" for="approvalSwitch">Is Admin Approval Required?</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* --- FIXED: Using Cascading Dropdowns instead of Location string --- *@
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Region <span class="required-star">*</span></label>
+                                <select class="form-select" value="@hallVM.RegionId" @onchange="OnRegionChanged">
+                                    <option value="0">-- Select Region --</option>
+                                    @foreach (var reg in RegionList)
+                                    {
+                                        <option value="@reg.Id">@reg.RegionName</option>
+                                    }
+                                </select>
+                                <ValidationMessage For="@(() => hallVM.RegionId)" />
+                            </div>
+
+                            <div class="col-md-6">
+                                <label class="form-label">Location <span class="required-star">*</span></label>
+                                <InputSelect @bind-Value="hallVM.LocationId" class="form-select" disabled="@(!FilteredLocationList.Any())">
+                                    <option value="0">-- Select Location --</option>
+                                    @foreach (var loc in FilteredLocationList)
+                                    {
+                                        <option value="@loc.Id">@loc.LocationName</option>
+                                    }
+                                </InputSelect>
+                                <ValidationMessage For="@(() => hallVM.LocationId)" />
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                @* --- ACTION BUTTONS --- *@
+                <div class="d-flex justify-content-end gap-2 mb-4">
+                    <button type="button" class="btn btn-secondary px-4" @onclick="GoBack">Cancel</button>
+                    <button type="submit" class="btn btn-success px-4 fw-bold">
+                        <i class="bi bi-check-circle"></i> @(Id == 0 ? "Create Hall" : "Update Hall")
+                    </button>
+                </div>
+
+            </EditForm>
+
+            @* --- SECTION 2: BOOKED SLOTS MANAGEMENT (RESTORED) --- *@
+            @if (Id != 0)
+            {
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white text-primary fw-bold d-flex justify-content-between align-items-center">
+                        <span>📅 Booked Slots Management</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="RefreshBookings">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (isLoadingBookings)
+                        {
+                            <div class="text-center py-5">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading bookings...</span>
+                                </div>
+                                <p class="mt-3 text-muted fw-bold">Loading booked slots...</p>
+                            </div>
+                        }
+                        else if (bookedSlotsByDate == null || !bookedSlotsByDate.Any())
+                        {
+                            <div class="text-center text-muted py-5">
+                                <i class="bi bi-calendar-check fs-1 text-success"></i>
+                                <p class="mt-3 fw-bold fs-5">No Bookings Found</p>
+                                <p class="text-muted">All slots are currently available for this hall.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover table-bordered align-middle mb-0" style="font-size: 0.9rem;">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th style="width: 80px;" class="text-center">Date</th>
+                                            <th style="width: 45%;" class="text-center"><i class="bi bi-sunrise me-1"></i>Morning (09:00-13:00)</th>
+                                            <th style="width: 45%;" class="text-center"><i class="bi bi-sunset me-1"></i>Evening (14:00-17:00)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var dateSlot in bookedSlotsByDate.OrderBy(x => x.Key))
+                                        {
+                                            <tr>
+                                                <td class="text-center bg-light p-2" style="vertical-align: middle;">
+                                                    <div class="d-flex flex-column">
+                                                        <span class="text-primary fw-bold" style="font-size: 1.5rem; line-height: 1;">@dateSlot.Key.ToString("dd")</span>
+                                                        <span class="text-muted" style="font-size: 0.75rem;">@dateSlot.Key.ToString("MMM")</span>
+                                                    </div>
+                                                </td>
+                                                <td class="p-2">
+                                                    @if (dateSlot.Value.MorningBooking != null)
+                                                    {
+                                                        <div class="card p-2 border-0 shadow-sm position-relative" style="background-color: #fff8e1;">
+                                                            @if (dateSlot.Key >= DateTime.Today)
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-link p-0 border-0 position-absolute top-0 end-0 m-1"
+                                                                        style="z-index: 10;"
+                                                                        @onclick="() => DeleteBooking(dateSlot.Value.MorningBooking.BookingId, dateSlot.Value.MorningBooking.SessionRecordId)"
+                                                                        title="Delete Booking">
+                                                                    <i class="bi bi-trash3-fill text-danger fs-6"></i>
+                                                                </button>
+                                                            }
+                                                            <div class="fw-bold text-dark mb-1" style="font-size: 0.9rem;">@dateSlot.Value.MorningBooking.ProgramName</div>
+                                                            <div class="text-muted small mb-1">
+                                                                <i class="bi bi-person-circle me-1"></i>@dateSlot.Value.MorningBooking.BookedBy
+                                                            </div>
+                                                            <span class="badge rounded-pill @GetStatusBadgeClass(dateSlot.Value.MorningBooking.Status)" style="font-size: 0.7rem; width: fit-content;">
+                                                                @dateSlot.Value.MorningBooking.Status
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="bg-light d-flex justify-content-center align-items-center" style="min-height: 60px;">
+                                                            <span class="badge bg-success rounded-pill px-3 py-2">
+                                                                <i class="bi bi-check2-circle me-1"></i>Available
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </td>
+                                                <td class="p-2">
+                                                    @if (dateSlot.Value.EveningBooking != null)
+                                                    {
+                                                        <div class="card p-2 border-0 shadow-sm position-relative" style="background-color: #fff8e1;">
+                                                            @if (dateSlot.Key >= DateTime.Today)
+                                                            {
+                                                                <button type="button"
+                                                                        class="btn btn-link p-0 border-0 position-absolute top-0 end-0 m-1"
+                                                                        style="z-index: 10;"
+                                                                        @onclick="() => DeleteBooking(dateSlot.Value.EveningBooking.BookingId, dateSlot.Value.EveningBooking.SessionRecordId)"
+                                                                        title="Delete Booking">
+                                                                    <i class="bi bi-trash3-fill text-danger fs-6"></i>
+                                                                </button>
+                                                            }
+                                                            <div class="fw-bold text-dark mb-1" style="font-size: 0.9rem;">@dateSlot.Value.EveningBooking.ProgramName</div>
+                                                            <div class="text-muted small mb-1">
+                                                                <i class="bi bi-person-circle me-1"></i>@dateSlot.Value.EveningBooking.BookedBy
+                                                            </div>
+                                                            <span class="badge rounded-pill @GetStatusBadgeClass(dateSlot.Value.EveningBooking.Status)" style="font-size: 0.7rem; width: fit-content;">
+                                                                @dateSlot.Value.EveningBooking.Status
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="bg-light d-flex justify-content-center align-items-center" style="min-height: 60px;">
+                                                            <span class="badge bg-success rounded-pill px-3 py-2">
+                                                                <i class="bi bi-check2-circle me-1"></i>Available
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="card-footer bg-light py-2">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                            <span class="small">Available</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-trash3-fill text-danger me-2"></i>
+                                            <span class="small">Click trash icon to cancel booking</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private HallConfigurationVM hallVM = new HallConfigurationVM();
+    private Dictionary<DateTime, DailySlots> bookedSlotsByDate = new();
+    private bool isLoadingBookings = false;
+
+    // Dropdown Lists
+    private List<MasterRegion> RegionList = new();
+    private List<MasterLocation> AllLocations = new();
+    private List<MasterLocation> FilteredLocationList = new();
+
+    public class DailySlots
+    {
+        public SlotBookingInfo? MorningBooking { get; set; }
+        public SlotBookingInfo? EveningBooking { get; set; }
+    }
+
+    public class SlotBookingInfo
+    {
+        public int BookingId { get; set; }
+        public int SessionRecordId { get; set; }
+        public string ProgramName { get; set; } = "";
+        public string BookedBy { get; set; } = "";
+        public string SessionTime { get; set; } = "";
+        public string Status { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Load Dropdown Data from Master Service
+        RegionList = await MasterService.GetAllRegionsAsync();
+        AllLocations = await MasterService.GetAllLocationsAsync();
+
+        if (Id != 0)
+        {
+            // 2. Fetch hall data from service
+            hallVM = await Service.GetHallByIdAsync(Id);
+
+            // 3. Trigger cascading Logic to show correct location in dropdown
+            if (hallVM.RegionId > 0)
+            {
+                FilteredLocationList = AllLocations.Where(l => l.RegionId == hallVM.RegionId).ToList();
+            }
+
+            hallVM.Sessions = hallVM.Sessions ?? new List<SessionConfigVM>();
+
+            // 4. Load bookings
+            await LoadBookedSlots();
+        }
+        else
+        {
+            hallVM.Sessions = new List<SessionConfigVM>();
+        }
+    }
+
+    private void OnRegionChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int rId) && rId > 0)
+        {
+            hallVM.RegionId = rId;
+            FilteredLocationList = AllLocations.Where(l => l.RegionId == rId).ToList();
+            hallVM.LocationId = 0; // Reset location
+        }
+        else
+        {
+            hallVM.RegionId = 0;
+            FilteredLocationList = new();
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        try
+        {
+            if (Id != 0)
+            {
+                // Preserve sessions logic (if needed for DB constraints)
+                var originalHall = await Service.GetHallByIdAsync(Id);
+                if (originalHall?.Sessions != null)
+                {
+                    hallVM.Sessions = originalHall.Sessions;
+                }
+            }
+
+            // FIXED: Replaced SaveHallConfiguration with Create/Update
+            bool success;
+            if (hallVM.Id == 0)
+            {
+                success = await Service.CreateHallAsync(hallVM);
+            }
+            else
+            {
+                success = await Service.UpdateHallAsync(hallVM);
+            }
+
+            if (success)
+            {
+                await JS.InvokeVoidAsync("alert", Id == 0 ? "✅ Hall Created Successfully!" : "✅ Hall Updated Successfully!");
+                Navigation.NavigateTo("/manage-halls");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "❌ Error Saving Data. The operation failed. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            string errorMessage = ex.InnerException?.Message ?? ex.Message;
+            await JS.InvokeVoidAsync("alert", $"❌ Error: {errorMessage}");
+            await JS.InvokeVoidAsync("console.error", $"Full Error: {ex}");
+        }
+    }
+
+    // --- BOOKING LOGIC RESTORED BELOW ---
+
+    private async Task LoadBookedSlots()
+    {
+        try
+        {
+            isLoadingBookings = true;
+            StateHasChanged();
+
+            var allBookings = await BookingService.GetBookingsByHallIdAsync(Id);
+
+            var activeBookings = allBookings
+                .Where(b => b.BookingStatus == "Pending For Approval" ||
+                            b.BookingStatus == "Approved" ||
+                            b.BookingStatus == "Auto Approved" ||
+                            b.BookingStatus == "Confirmed")
+                .ToList();
+
+            bookedSlotsByDate = new Dictionary<DateTime, DailySlots>();
+
+            foreach (var booking in activeBookings)
+            {
+                foreach (var session in booking.SessionDetails)
+                {
+                    var bookingDate = session.Date.Date;
+
+                    if (!bookedSlotsByDate.ContainsKey(bookingDate))
+                    {
+                        bookedSlotsByDate[bookingDate] = new DailySlots();
+                    }
+
+                    var slotInfo = new SlotBookingInfo
+                    {
+                        BookingId = booking.BookingId,
+                        SessionRecordId = session.RecordId,
+                        ProgramName = booking.ProgramName,
+                        BookedBy = booking.BookedBy,
+                        SessionTime = session.SessionTime,
+                        Status = session.Status
+                    };
+
+                    if (session.SessionTime.Contains("AM") || session.SessionTime.Contains("Morning"))
+                    {
+                        bookedSlotsByDate[bookingDate].MorningBooking = slotInfo;
+                    }
+                    else
+                    {
+                        bookedSlotsByDate[bookingDate].EveningBooking = slotInfo;
+                    }
+                }
+            }
+
+            bookedSlotsByDate = bookedSlotsByDate
+                .Where(kvp => kvp.Value.MorningBooking != null || kvp.Value.EveningBooking != null)
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", $"Error loading bookings: {ex.Message}");
+            bookedSlotsByDate = new Dictionary<DateTime, DailySlots>();
+        }
+        finally
+        {
+            isLoadingBookings = false;
+        }
+    }
+
+    private async Task RefreshBookings()
+    {
+        await LoadBookedSlots();
+        StateHasChanged();
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Pending" or "Pending For Approval" => "bg-warning text-dark",
+            "Approved" or "Auto Approved" => "bg-success text-white",
+            "Confirmed" => "bg-primary text-white",
+            "Cancelled" or "Rejected" => "bg-danger text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+
+    private async Task DeleteBooking(int bookingId, int sessionRecordId)
+    {
+        bool confirmed = await JS.InvokeAsync<bool>("confirm",
+            "⚠️ WARNING: Are you sure you want to DELETE this booking?\n\nThis will immediately cancel the session and free up the slot.\n\nThis action CANNOT be undone!");
+
+        if (confirmed)
+        {
+            try
+            {
+                isLoadingBookings = true;
+                StateHasChanged();
+
+                var success = await BookingService.CancelSessionAsync(sessionRecordId);
+
+                if (success)
+                {
+                    await JS.InvokeVoidAsync("alert", "✅ Booking deleted successfully! The slot is now available.");
+                    await LoadBookedSlots();
+                    StateHasChanged();
+                }
+                else
+                {
+                    await JS.InvokeVoidAsync("alert", "❌ Failed to delete booking. Please try again or contact support.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await JS.InvokeVoidAsync("alert", $"❌ Error: {ex.Message}");
+            }
+            finally
+            {
+                isLoadingBookings = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/manage-halls");
+    }
+}

@@ -1,0 +1,147 @@
+﻿@page "/hall-configuration/details/{Id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using ConferenceHallManagement.web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+@inject HallConfigurationService HallService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="text-primary"><i class="bi bi-eye me-2"></i>Hall Details</h3>
+        <button class="btn btn-secondary" @onclick="GoBack">
+            <i class="bi bi-arrow-left me-2"></i>Back to List
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 text-muted">Loading hall details...</p>
+        </div>
+    }
+    else if (HallModel == null)
+    {
+        <div class="alert alert-warning">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            Hall not found or has been deleted.
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-building me-2"></i>@(HallModel.HallName ?? "N/A")
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="fw-bold text-muted small">HALL NAME (ENGLISH)</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">
+                            @(HallModel.HallName ?? "N/A")
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="fw-bold text-muted small">HALL NAME (HINDI)</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">
+                            @(HallModel.HallNameHindi ?? "N/A")
+                        </p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="fw-bold text-muted small">AT FLOOR</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">
+                            @(HallModel.Floor ?? "N/A")
+                        </p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="fw-bold text-muted small">CAPACITY</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">
+                            @HallModel.Capacity Persons
+                        </p>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="fw-bold text-muted small">ADMIN APPROVAL REQUIRED?</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">
+                            @if (HallModel.IsAdminApprovalRequired)
+                            {
+                                <span class="badge bg-warning text-dark">YES</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-success">NO</span>
+                            }
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="fw-bold text-muted small">REGION ID</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">1</p>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="fw-bold text-muted small">LOCATION</label>
+                        <p class="fs-5 text-dark border p-2 rounded bg-light">
+                            @(HallModel.LocationName ?? "N/A")
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer bg-light">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary" @onclick="() => EditHall(Id)">
+                        <i class="bi bi-pencil-square me-2"></i>Edit Hall
+                    </button>
+                    <button class="btn btn-info text-white" @onclick="() => ViewSessions(Id)">
+                        <i class="bi bi-list-task me-2"></i>View Sessions
+                    </button>
+                    <button class="btn btn-secondary" @onclick="GoBack">
+                        <i class="bi bi-arrow-left me-2"></i>Back to List
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private HallConfigurationVM? HallModel;
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            isLoading = true;
+            HallModel = await HallService.GetHallByIdAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", $"Error loading hall details: {ex.Message}");
+            HallModel = null;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/manage-halls");
+    }
+
+    private void EditHall(int id)
+    {
+        Navigation.NavigateTo($"/hall-configuration/edit/{id}");
+    }
+
+    private void ViewSessions(int id)
+    {
+        Navigation.NavigateTo($"/hall-configuration/view-sessions/{id}");
+    }
+}

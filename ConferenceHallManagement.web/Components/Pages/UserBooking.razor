@@ -1,0 +1,677 @@
+@page "/book-hall"
+@rendermode InteractiveServer
+
+@using ConferenceHallManagement.web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using ConferenceHallManagement.Web.Services
+@using ConferenceHallManagement.Web.ViewModels
+@using Models_ConferenceHallManagement.AppDbModels
+@using BLL_ConferenceHallManagement
+@using Repository_ConferenceHallManagement.AppDataRepositoy
+
+@inject IUserBookingService BookingService
+@inject IBllEmployee EmployeeService
+@inject HallConfigurationService HallService
+@inject IMasterRoomTypeBlazorService RoomTypeService
+@inject IConferenceHallDataRepository HallRepository
+@inject ICHBookingSessionsDataRepository BookingSessionRepo
+@inject NavigationManager NavManager
+@inject IJSRuntime JSRuntime
+
+<style>
+    .required-asterisk {
+        color: #dc3545;
+        font-weight: bold;
+        margin-left: 2px;
+    }
+
+    .form-label {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 0.5rem;
+    }
+
+    .card-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.5rem;
+    }
+
+    .card-header h3 {
+        display: flex;
+        align-items: center;
+        font-weight: 600;
+    }
+
+    .card-header h3 i {
+        margin-right: 0.75rem;
+        font-size: 1.5rem;
+    }
+
+    .form-control:focus, .form-select:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        border: none;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        transition: transform 0.2s;
+    }
+
+    .btn-success:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(17, 153, 142, 0.4);
+    }
+
+    .btn-success:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        padding: 0.75rem 2rem;
+        font-weight: 600;
+        transition: transform 0.2s;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .validation-message {
+        color: #dc3545;
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+        display: block;
+    }
+
+    .alert-info-custom {
+        background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+        border: 1px solid #667eea;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .alert-info-custom i {
+        color: #667eea;
+        font-size: 1.25rem;
+        margin-right: 0.5rem;
+    }
+
+    .is-invalid {
+        border-color: #dc3545 !important;
+    }
+</style>
+
+<div class="container mt-4">
+    <div class="card shadow-lg border-0">
+        <div class="card-header text-white">
+            <h3 class="mb-0">
+                <i class="bi bi-calendar-check"></i>
+                Book Conference Hall
+            </h3>
+        </div>
+        <div class="card-body p-4">
+
+            <div class="row g-3 mb-4">
+                <!-- SELECT HALL - FIRST -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        SELECT HALL <span class="required-asterisk">*</span>
+                    </label>
+                    <select class="form-select @(ShowValidation && SelectedHallId == 0 ? "is-invalid" : "")" 
+                            @bind="SelectedHallId" 
+                            @oninput="ClearValidation">
+                        <option value="0">-- Select Conference Hall --</option>
+                        @foreach (var hall in FilteredHalls)
+                        {
+                            <option value="@hall.HallId">@hall.HallNameEn (Capacity: @hall.Capacity)</option>
+                        }
+                    </select>
+                    @if (ShowValidation && SelectedHallId == 0)
+                    {
+                        <span class="validation-message">Please select a conference hall</span>
+                    }
+                </div>
+
+                <!-- ROOM TYPE - SECOND -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        ROOM TYPE <span class="required-asterisk">*</span>
+                    </label>
+                    <select class="form-select @(ShowValidation && SelectedRoomTypeId == 0 ? "is-invalid" : "")" 
+                            @bind="SelectedRoomTypeId"
+                            @oninput="ClearValidation">
+                        <option value="0">-- All Room Types --</option>
+                        @foreach (var roomType in RoomTypes)
+                        {
+                            <option value="@roomType.RoomTypeId">@roomType.RoomTypeEn</option>
+                        }
+                    </select>
+                    @if (ShowValidation && SelectedRoomTypeId == 0)
+                    {
+                        <span class="validation-message">Please select a room type</span>
+                    }
+                </div>
+
+                <!-- PURPOSE - THIRD -->
+                <div class="col-md-8">
+                    <label class="form-label">
+                        PURPOSE <span class="required-asterisk">*</span>
+                    </label>
+                    <input type="text" 
+                           class="form-control @(ShowValidation && string.IsNullOrWhiteSpace(ProgramName) ? "is-invalid" : "")" 
+                           @bind="ProgramName" 
+                           @oninput="ClearValidation"
+                           placeholder="e.g. Monthly Review Meeting" />
+                    @if (ShowValidation && string.IsNullOrWhiteSpace(ProgramName))
+                    {
+                        <span class="validation-message">Please enter the purpose of booking</span>
+                    }
+                </div>
+
+                <!-- NO. OF ATTENDEES - FOURTH -->
+                <div class="col-md-4">
+                    <label class="form-label">
+                        NO. OF ATTENDEES <span class="required-asterisk">*</span>
+                    </label>
+                    <input type="number" 
+                           class="form-control @(ShowValidation && NumberOfAttendees <= 0 ? "is-invalid" : "")" 
+                           @bind="NumberOfAttendees" 
+                           @oninput="ClearValidation"
+                           placeholder="0" 
+                           min="1" />
+                    @if (ShowValidation && NumberOfAttendees <= 0)
+                    {
+                        <span class="validation-message">Please enter number of attendees</span>
+                    }
+                </div>
+
+                <!-- REMARKS - OPTIONAL -->
+                <div class="col-md-12">
+                    <label class="form-label">REMARKS</label>
+                    <textarea class="form-control" @bind="Remarks" placeholder="Any special requirements (optional)" rows="3"></textarea>
+                </div>
+
+                <!-- START DATE - FIFTH -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        START DATE <span class="required-asterisk">*</span>
+                    </label>
+                    <input type="date" 
+                           class="form-control @(ShowValidation && !IsValidStartDate() ? "is-invalid" : "")" 
+                           @bind="StartDate"
+                           @oninput="ClearValidation" />
+                    @if (ShowValidation && !IsValidStartDate())
+                    {
+                        <span class="validation-message">Please select a valid start date</span>
+                    }
+                </div>
+
+                <!-- END DATE - SIXTH -->
+                <div class="col-md-6">
+                    <label class="form-label">
+                        END DATE <span class="required-asterisk">*</span>
+                    </label>
+                    <input type="date" 
+                           class="form-control @(ShowValidation && !IsValidEndDate() ? "is-invalid" : "")" 
+                           @bind="EndDate"
+                           @oninput="ClearValidation" />
+                    @if (ShowValidation && !IsValidEndDate())
+                    {
+                        <span class="validation-message">End date must be greater than or equal to start date</span>
+                    }
+                </div>
+
+                <div class="col-md-12 d-flex justify-content-end">
+                    <button class="btn btn-success" @onclick="HandleCheckAvailability" disabled="@IsLoading">
+                        @if (IsLoading)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Checking...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-search me-2"></i>
+                            <span>Check Availability</span>
+                        }
+                    </button>
+                </div>
+            </div>
+
+            <hr />
+
+            @if (DaySchedules != null && DaySchedules.Any())
+            {
+                <h4 class="text-primary mt-3">Select Sessions</h4>
+                <div class="table-responsive mb-3">
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 30%;">Date</th>
+                                <th style="width: 35%;">Morning Slot (09:00 AM - 01:00 PM)</th>
+                                <th style="width: 35%;">Evening Slot (02:00 PM - 05:00 PM)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var schedule in DaySchedules)
+                            {
+                                <tr>
+                                    <td class="fw-bold align-middle">@schedule.Date.ToString("dd-MMM-yyyy (ddd)")</td>
+
+                                    <td class="align-middle">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox"
+                                                   @bind="schedule.Morning.IsSelected"
+                                                   disabled="@schedule.Morning.IsBooked"
+                                                   id="morning_@schedule.Date.Ticks" />
+                                            <label class="form-check-label w-100" for="morning_@schedule.Date.Ticks">
+                                                <div>
+                                                    @schedule.Morning.Label
+                                                    @if (schedule.Morning.IsBooked)
+                                                    {
+                                                        <span class="badge bg-danger ms-2">Booked</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-success ms-2">Available</span>
+                                                    }
+                                                </div>
+                                                @if (schedule.Morning.IsBooked)
+                                                {
+                                                    <div class="mt-2 text-danger small border-top pt-2">
+                                                        <div>
+                                                            <i class="bi bi-person-fill"></i> <strong>@schedule.Morning.BookedByName</strong>
+                                                        </div>
+                                                        <div>
+                                                            <i class="bi bi-telephone-fill"></i> @schedule.Morning.BookedByPhone
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </label>
+                                        </div>
+                                    </td>
+
+                                    <td class="align-middle">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox"
+                                                   @bind="schedule.Evening.IsSelected"
+                                                   disabled="@schedule.Evening.IsBooked"
+                                                   id="evening_@schedule.Date.Ticks" />
+                                            <label class="form-check-label w-100" for="evening_@schedule.Date.Ticks">
+                                                <div>
+                                                    @schedule.Evening.Label
+                                                    @if (schedule.Evening.IsBooked)
+                                                    {
+                                                        <span class="badge bg-danger ms-2">Booked</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-success ms-2">Available</span>
+                                                    }
+                                                </div>
+                                                @if (schedule.Evening.IsBooked)
+                                                {
+                                                    <div class="mt-2 text-danger small border-top pt-2">
+                                                        <div>
+                                                            <i class="bi bi-person-fill"></i> <strong>@schedule.Evening.BookedByName</strong>
+                                                        </div>
+                                                        <div>
+                                                            <i class="bi bi-telephone-fill"></i> @schedule.Evening.BookedByPhone
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </label>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <button class="btn btn-primary btn-lg" @onclick="ConfirmBooking" disabled="@IsSaving">
+                        @if (IsSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Processing...</span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check-circle me-2"></i>
+                            <span>Confirm Booking</span>
+                        }
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    // --- HELPER CLASSES ---
+    public class DaySchedule
+    {
+        public DateTime Date { get; set; }
+        public SlotItem Morning { get; set; } = new();
+        public SlotItem Evening { get; set; } = new();
+    }
+
+    public class SlotItem
+    {
+        public int SessionId { get; set; }
+        public string Label { get; set; } = string.Empty;
+        public bool IsSelected { get; set; }
+        public bool IsBooked { get; set; }
+        public string BookedByName { get; set; } = string.Empty;
+        public string BookedByPhone { get; set; } = string.Empty;
+    }
+
+    // --- VARIABLES ---
+    private List<MasterRoomTypeVM> RoomTypes { get; set; } = new();
+    private List<ConferenceHall> AllHalls { get; set; } = new();
+    private List<ConferenceHall> FilteredHalls { get; set; } = new();
+    private int SelectedRoomTypeId { get; set; } = 0;
+    private int SelectedHallId { get; set; }
+    private string ProgramName { get; set; } = "";
+    private int NumberOfAttendees { get; set; }
+    private string Remarks { get; set; } = "";
+    private DateTime StartDate { get; set; } = DateTime.Today;
+    private DateTime EndDate { get; set; } = DateTime.Today;
+
+    private string LoggedInUser { get; set; } = "";
+    private string UserPhone { get; set; } = "";
+
+    private List<DaySchedule> DaySchedules { get; set; } = new();
+    private bool IsLoading { get; set; } = false;
+    private bool IsSaving { get; set; } = false;
+    private bool ShowValidation { get; set; } = false;
+
+    // --- ON LOAD: Fetch User Data, Room Types and Active Halls ---
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            string mockLoggedInId = "60020656";
+            var empData = await EmployeeService.GetEmployeeByUserName(mockLoggedInId);
+
+            if (empData != null)
+            {
+                LoggedInUser = empData.Empname;
+                UserPhone = empData.Cellno;
+            }
+
+            var roomTypeList = await RoomTypeService.GetAllAsync();
+            RoomTypes = roomTypeList.ToList();
+
+            AllHalls = await HallRepository.GetAllHallsAsync();
+            FilteredHalls = AllHalls.Where(h => h.Status).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error fetching data: " + ex.Message);
+        }
+    }
+
+    // --- VALIDATION METHODS ---
+    private bool IsValidStartDate()
+    {
+        return StartDate != default(DateTime);
+    }
+
+    private bool IsValidEndDate()
+    {
+        return EndDate != default(DateTime) && EndDate >= StartDate;
+    }
+
+    private bool ValidateForm()
+    {
+        if (SelectedHallId == 0)
+            return false;
+
+        if (SelectedRoomTypeId == 0)
+            return false;
+
+        if (string.IsNullOrWhiteSpace(ProgramName))
+            return false;
+
+        if (NumberOfAttendees <= 0)
+            return false;
+
+        if (!IsValidStartDate())
+            return false;
+
+        if (!IsValidEndDate())
+            return false;
+
+        return true;
+    }
+
+    private void ClearValidation()
+    {
+        ShowValidation = false;
+    }
+
+    // --- CHECK AVAILABILITY WITH STANDARD SLOTS ---
+    private async Task HandleCheckAvailability()
+    {
+        // Validate all required fields
+        if (!ValidateForm())
+        {
+            ShowValidation = true;
+            await JSRuntime.InvokeVoidAsync("alert", "Please fill all required fields marked with * before checking availability.");
+            return;
+        }
+
+        IsLoading = true;
+        DaySchedules = new();
+
+        try
+        {
+            // Loop through date range
+            for (var currentDate = StartDate.Date; currentDate <= EndDate.Date; currentDate = currentDate.AddDays(1))
+            {
+                var daySchedule = new DaySchedule
+                {
+                    Date = currentDate,
+                    Morning = new SlotItem
+                    {
+                        SessionId = 1,
+                        Label = "Morning (09:00 AM - 01:00 PM)",
+                        IsSelected = false,
+                        IsBooked = false,
+                        BookedByName = "",
+                        BookedByPhone = ""
+                    },
+                    Evening = new SlotItem
+                    {
+                        SessionId = 2,
+                        Label = "Evening (02:00 PM - 05:00 PM)",
+                        IsSelected = false,
+                        IsBooked = false,
+                        BookedByName = "",
+                        BookedByPhone = ""
+                    }
+                };
+
+                // Check if Morning slot (SessionId = 1) is already booked
+                var morningBooking = await BookingSessionRepo.GetConferenceHallSessionBookingDetails(SelectedHallId, 1, currentDate);
+                if (morningBooking != null)
+                {
+                    daySchedule.Morning.IsBooked = true;
+
+                    // Extract user details from the booking
+                    if (morningBooking.Booking != null)
+                    {
+                        daySchedule.Morning.BookedByName = morningBooking.Booking.CreatedBy ?? "Unknown User";
+
+                        // Extract phone from Remarks (format: "Phone: XXXXXXXXXX | remarks")
+                        var remarks = morningBooking.Booking.Remarks ?? "";
+                        if (remarks.Contains("Phone:"))
+                        {
+                            var phoneStart = remarks.IndexOf("Phone:") + 6;
+                            var phoneEnd = remarks.IndexOf("|", phoneStart);
+                            if (phoneEnd > phoneStart)
+                            {
+                                daySchedule.Morning.BookedByPhone = remarks.Substring(phoneStart, phoneEnd - phoneStart).Trim();
+                            }
+                            else
+                            {
+                                daySchedule.Morning.BookedByPhone = remarks.Substring(phoneStart).Trim();
+                            }
+                        }
+                        else
+                        {
+                            daySchedule.Morning.BookedByPhone = "N/A";
+                        }
+                    }
+                }
+
+                // Check if Evening slot (SessionId = 2) is already booked
+                var eveningBooking = await BookingSessionRepo.GetConferenceHallSessionBookingDetails(SelectedHallId, 2, currentDate);
+                if (eveningBooking != null)
+                {
+                    daySchedule.Evening.IsBooked = true;
+
+                    // Extract user details from the booking
+                    if (eveningBooking.Booking != null)
+                    {
+                        daySchedule.Evening.BookedByName = eveningBooking.Booking.CreatedBy ?? "Unknown User";
+
+                        // Extract phone from Remarks (format: "Phone: XXXXXXXXXX | remarks")
+                        var remarks = eveningBooking.Booking.Remarks ?? "";
+                        if (remarks.Contains("Phone:"))
+                        {
+                            var phoneStart = remarks.IndexOf("Phone:") + 6;
+                            var phoneEnd = remarks.IndexOf("|", phoneStart);
+                            if (phoneEnd > phoneStart)
+                            {
+                                daySchedule.Evening.BookedByPhone = remarks.Substring(phoneStart, phoneEnd - phoneStart).Trim();
+                            }
+                            else
+                            {
+                                daySchedule.Evening.BookedByPhone = remarks.Substring(phoneStart).Trim();
+                            }
+                        }
+                        else
+                        {
+                            daySchedule.Evening.BookedByPhone = "N/A";
+                        }
+                    }
+                }
+
+                DaySchedules.Add(daySchedule);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error checking availability: " + ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    // --- CONFIRM BOOKING ---
+    private async Task ConfirmBooking()
+    {
+        // 1. Validate Hall Selected
+        if (SelectedHallId == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select a hall!");
+            return;
+        }
+
+        // 2. Validate Purpose Filled
+        if (string.IsNullOrEmpty(ProgramName))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please enter Meeting Purpose!");
+            return;
+        }
+
+        // 3. Validate User Data Loaded
+        if (string.IsNullOrEmpty(LoggedInUser))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "User Data Error: Could not fetch employee details. Cannot proceed.");
+            return;
+        }
+
+        // 4. Validate at least one slot selected
+        bool hasSelection = DaySchedules.Any(d => d.Morning.IsSelected || d.Evening.IsSelected);
+        if (!hasSelection)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Please select at least one session to book!");
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            // Convert DaySchedules to BookingDayVM format expected by SaveBookingAsync
+            var availabilityList = DaySchedules.Select(day => new BookingDayVM
+            {
+                Date = day.Date,
+                Sessions = new List<BookingSessionVM>()
+            }).ToList();
+
+            for (int i = 0; i < DaySchedules.Count; i++)
+            {
+                if (DaySchedules[i].Morning.IsSelected)
+                {
+                    availabilityList[i].Sessions.Add(new BookingSessionVM
+                    {
+                        SessionId = 1,
+                        SessionName = "Morning (09:00 AM - 01:00 PM)",
+                        IsSelected = true
+                    });
+                }
+
+                if (DaySchedules[i].Evening.IsSelected)
+                {
+                    availabilityList[i].Sessions.Add(new BookingSessionVM
+                    {
+                        SessionId = 2,
+                        SessionName = "Evening (02:00 PM - 05:00 PM)",
+                        IsSelected = true
+                    });
+                }
+            }
+
+            bool success = await BookingService.SaveBookingAsync(
+                SelectedHallId,
+                ProgramName,
+                NumberOfAttendees,
+                Remarks,
+                LoggedInUser,
+                UserPhone,
+                availabilityList
+            );
+
+            if (success)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Booking Successful!");
+                NavManager.NavigateTo("/my-bookings", true);
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Booking Failed! One or more slots may already be occupied. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Error: " + ex.Message);
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+}

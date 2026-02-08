@@ -1,0 +1,253 @@
+﻿@page "/hall-configuration/view-sessions/{Id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using ConferenceHallManagement.web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+@inject HallConfigurationService HallService
+@inject IUserBookingService BookingService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Session Schedule</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2>
+                <i class="bi bi-calendar-week me-2"></i>
+                Session Schedule
+                @if (!isLoading && OccupiedDates != null)
+                {
+                    <span class="badge bg-primary fs-6">@OccupiedDates.Count</span>
+                }
+            </h2>
+            @if (HallModel != null)
+            {
+                <p class="text-muted mb-0">
+                    <strong>@HallModel.HallName</strong> - View booked sessions
+                </p>
+            }
+        </div>
+        <button class="btn btn-secondary btn-lg shadow" @onclick="GoBack">
+            <i class="bi bi-arrow-left me-2"></i>Back to List
+        </button>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-3 fs-5">Loading booked sessions...</p>
+        </div>
+    }
+    else if (OccupiedDates == null || OccupiedDates.Count == 0)
+    {
+        <div class="text-center py-5">
+            <i class="bi bi-calendar-check display-1 text-success"></i>
+            <h4 class="mt-3">No Upcoming Bookings</h4>
+            <p class="text-muted">All slots are currently available for this hall.</p>
+        </div>
+    }
+    else
+    {
+        <div class="card shadow-lg border-0">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered align-middle mb-0" style="font-size: 0.9rem;">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 100px;" class="text-center">Date</th>
+                                <th style="width: 45%;" class="text-center"><i class="bi bi-sunrise me-1"></i>Morning (09:00-13:00)</th>
+                                <th style="width: 45%;" class="text-center"><i class="bi bi-sunset me-1"></i>Evening (14:00-17:00)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var day in OccupiedDates)
+                            {
+                                <tr>
+                                    <td class="text-center bg-light p-2 border-end border-2" style="vertical-align: middle;">
+                                        <div class="d-flex flex-column">
+                                            <span class="h5 fw-bold text-primary mb-0">@day.Date.ToString("dd")</span>
+                                            <small class="text-muted">@day.Date.ToString("MMM yyyy")</small>
+                                            <span class="badge bg-secondary mt-1" style="font-size: 0.65rem;">@day.Date.ToString("ddd")</span>
+                                        </div>
+                                    </td>
+
+                                    <td class="p-2">
+                                        @if (day.MorningBooking != null)
+                                        {
+                                            <div class="card border-0 shadow-sm p-2 border-start border-4 border-warning" style="background-color: #fff8e1;">
+                                                <div class="fw-bold text-dark mb-1" style="font-size: 0.9rem;">@day.MorningBooking.ProgramName</div>
+                                                <div class="text-muted small mb-1">
+                                                    <i class="bi bi-person-circle me-1"></i>@day.MorningBooking.BookedBy
+                                                </div>
+                                                <div class="text-muted small mb-2">
+                                                    <i class="bi bi-calendar-range me-1"></i>@day.MorningBooking.FromDate - @day.MorningBooking.ToDate
+                                                </div>
+                                                <span class="badge rounded-pill @GetStatusBadgeClass(day.MorningBooking.BookingStatus)" style="font-size: 0.7rem; width: fit-content;">
+                                                    @day.MorningBooking.BookingStatus
+                                                </span>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="bg-light d-flex justify-content-center align-items-center" style="min-height: 80px;">
+                                                <span class="badge bg-success rounded-pill px-3 py-2">
+                                                    <i class="bi bi-check2-circle me-1"></i>Available
+                                                </span>
+                                            </div>
+                                        }
+                                    </td>
+
+                                    <td class="p-2">
+                                        @if (day.EveningBooking != null)
+                                        {
+                                            <div class="card border-0 shadow-sm p-2 border-start border-4 border-warning" style="background-color: #fff8e1;">
+                                                <div class="fw-bold text-dark mb-1" style="font-size: 0.9rem;">@day.EveningBooking.ProgramName</div>
+                                                <div class="text-muted small mb-1">
+                                                    <i class="bi bi-person-circle me-1"></i>@day.EveningBooking.BookedBy
+                                                </div>
+                                                <div class="text-muted small mb-2">
+                                                    <i class="bi bi-calendar-range me-1"></i>@day.EveningBooking.FromDate - @day.EveningBooking.ToDate
+                                                </div>
+                                                <span class="badge rounded-pill @GetStatusBadgeClass(day.EveningBooking.BookingStatus)" style="font-size: 0.7rem; width: fit-content;">
+                                                    @day.EveningBooking.BookingStatus
+                                                </span>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="bg-light d-flex justify-content-center align-items-center" style="min-height: 80px;">
+                                                <span class="badge bg-success rounded-pill px-3 py-2">
+                                                    <i class="bi bi-check2-circle me-1"></i>Available
+                                                </span>
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="card-footer bg-light py-2">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-success rounded px-2 me-2" style="width: 20px; height: 20px;"></div>
+                            <span class="small">Available Slots</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex align-items-center">
+                            <div class="bg-warning rounded px-2 me-2" style="width: 20px; height: 20px;"></div>
+                            <span class="small">Booked Slots</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private HallConfigurationVM? HallModel;
+    private List<DailySlot> OccupiedDates = new();
+    private bool isLoading = true;
+
+    public class DailySlot
+    {
+        public DateTime Date { get; set; }
+        public BookingListVM? MorningBooking { get; set; }
+        public BookingListVM? EveningBooking { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            isLoading = true;
+
+            // Load hall details
+            HallModel = await HallService.GetHallByIdAsync(Id);
+
+            // Load bookings for this hall
+            var allBookings = await BookingService.GetBookingsByHallIdAsync(Id);
+
+            // Filter active bookings only
+            var activeBookings = allBookings
+                .Where(b => b.BookingStatus == "Pending For Approval" ||
+                           b.BookingStatus == "Approved" ||
+                           b.BookingStatus == "Auto Approved" ||
+                           b.BookingStatus == "Confirmed")
+                .ToList();
+
+            // Process bookings and group by date
+            var bookingsByDate = new Dictionary<DateTime, DailySlot>();
+
+            foreach (var booking in activeBookings)
+            {
+                // Get session details for this booking
+                foreach (var session in booking.SessionDetails)
+                {
+                    var bookingDate = session.Date.Date;
+
+                    // Ensure date entry exists
+                    if (!bookingsByDate.ContainsKey(bookingDate))
+                    {
+                        bookingsByDate[bookingDate] = new DailySlot { Date = bookingDate };
+                    }
+
+                    // Categorize by session time (Morning vs Evening)
+                    // Check if session time contains AM or morning keywords
+                    if (session.SessionTime.Contains("AM", StringComparison.OrdinalIgnoreCase) ||
+                        session.SessionTime.Contains("Morning", StringComparison.OrdinalIgnoreCase) ||
+                        session.SessionTime.Contains("09:00", StringComparison.OrdinalIgnoreCase) ||
+                        session.SessionTime.Contains("9:00", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bookingsByDate[bookingDate].MorningBooking = booking;
+                    }
+                    else
+                    {
+                        bookingsByDate[bookingDate].EveningBooking = booking;
+                    }
+                }
+            }
+
+            // Convert to list and sort by date
+            OccupiedDates = bookingsByDate.Values
+                .OrderBy(d => d.Date)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("console.error", $"Error loading sessions: {ex.Message}");
+            OccupiedDates = new List<DailySlot>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetStatusBadgeClass(string status)
+    {
+        return status switch
+        {
+            "Pending For Approval" => "bg-warning text-dark",
+            "Approved" or "Auto Approved" => "bg-success text-white",
+            "Confirmed" => "bg-primary text-white",
+            "Self-Cancelled" or "Cancelled By Admin" => "bg-danger text-white",
+            _ => "bg-secondary text-white"
+        };
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/manage-halls");
+    }
+}

@@ -1,0 +1,193 @@
+﻿@page "/login"
+@layout LoginLayout
+@rendermode InteractiveServer
+@attribute [AllowAnonymous]
+
+@using System.ComponentModel.DataAnnotations
+@using Repository_ConferenceHallManagement.UtilityRepository
+@inject NavigationManager Navigation
+@inject IEmployeeRepository _empRepo
+
+<PageTitle>Login - Conference Hall Management</PageTitle>
+
+<link rel="stylesheet" href="css/login.css" />
+
+<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+    <div class="login-main" style="width: 100%; max-width: 450px; margin: 0 auto;">
+        <div class="login-form-section">
+            <div class="form-title">
+                <h3>Welcome Back</h3>
+                <p class="text-muted small mb-0">System Login</p>
+                <div class="form-divider"></div>
+            </div>
+
+            <EditForm Model="@loginModel" OnValidSubmit="HandleLogin" class="login-form">
+
+                @* Error Message Display *@
+                @if (!string.IsNullOrEmpty(ErrorMessage))
+                {
+                    <div class="alert alert-danger p-2 mb-3" style="font-size: 0.9rem;">
+                        <span>⚠️ @ErrorMessage</span>
+                    </div>
+                }
+
+                <div class="form-group">
+                    <label for="username" class="form-label">
+                        <span class="label-icon">👤</span>
+                        <span>Employee No</span>
+                    </label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">👤</span>
+                        <input type="text"
+                               @bind="loginModel.UserId"
+                               id="username"
+                               class="form-input"
+                               placeholder="Enter 8-digit Emp No"
+                               required
+                               autocomplete="username" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" class="form-label">
+                        <span class="label-icon">🔐</span>
+                        <span>Password</span>
+                    </label>
+                    <div class="input-wrapper">
+                        <span class="input-icon">🔐</span>
+                        <input type="password"
+                               @bind="loginModel.Password"
+                               id="password"
+                               class="form-input"
+                               placeholder="Any Password"
+                               required
+                               autocomplete="current-password" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="captcha" class="form-label">
+                        <span class="label-icon">🔒</span>
+                        <span>CAPTCHA</span>
+                    </label>
+                    <div class="captcha-wrapper">
+                        <div class="input-wrapper">
+                            <span class="input-icon">🔒</span>
+                            <input type="text"
+                                   @bind="EnteredCaptcha"
+                                   id="captcha"
+                                   class="form-input"
+                                   placeholder="Enter CAPTCHA"
+                                   autocomplete="off"
+                                   required />
+                        </div>
+                        <div class="captcha-image">
+                            <div style="background: #f0f0f0; padding: 10px; border-radius: 4px; font-size: 24px; font-weight: bold; color: #333; letter-spacing: 5px; text-decoration: line-through; text-align: center;">
+                                @CaptchaCode
+                            </div>
+                        </div>
+                        <button type="button" class="captcha-refresh" title="Refresh CAPTCHA" @onclick="GenerateCaptcha">🔄</button>
+                    </div>
+                </div>
+
+                <div class="form-buttons">
+                    <button type="submit" class="btn btn-submit" disabled="@IsProcessing">
+                        @if (IsProcessing)
+                        {
+                            <span>⌛ Checking...</span>
+                        }
+                        else
+                        {
+                            <span>➤ Login</span>
+                        }
+                    </button>
+                    <button type="button" class="btn btn-forgot" @onclick="HandleForgotPassword">
+                        🔄 Forgot Password
+                    </button>
+                </div>
+            </EditForm>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    private string ErrorMessage { get; set; } = "";
+    private string CaptchaCode { get; set; } = "";
+    private string EnteredCaptcha { get; set; } = "";
+    private bool IsProcessing { get; set; } = false;
+
+    private LoginModel loginModel = new LoginModel();
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Error))
+        {
+            ErrorMessage = Error;
+        }
+        GenerateCaptcha();
+    }
+
+    private void GenerateCaptcha()
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var random = new Random();
+        CaptchaCode = new string(Enumerable.Repeat(chars, 4)
+            .Select(s => s[random.Next(s.Length)]).ToArray());
+        EnteredCaptcha = "";
+    }
+
+    private async Task HandleLogin()
+    {
+        IsProcessing = true;
+        ErrorMessage = ""; // Reset errors
+
+        // 1. Check Captcha
+        if (!string.Equals(EnteredCaptcha, CaptchaCode, StringComparison.OrdinalIgnoreCase))
+        {
+            ErrorMessage = "Invalid CAPTCHA code.";
+            GenerateCaptcha();
+            IsProcessing = false;
+            return;
+        }
+
+        try
+        {
+            // 2. Check DB if User Exists (Password ignored as per request)
+            bool isValidUser = await _empRepo.AuthenticateUser(loginModel.UserId, loginModel.Password);
+
+            if (isValidUser)
+            {
+                // 3. User found! Send to AccountController to set Cookie and Redirect based on Role
+                // Note: forceLoad: true is compulsory here for Cookies
+                Navigation.NavigateTo($"/Account/Login?userId={Uri.EscapeDataString(loginModel.UserId)}&password={Uri.EscapeDataString(loginModel.Password)}", forceLoad: true);
+            }
+            else
+            {
+                ErrorMessage = "Employee Number not found in Database.";
+                IsProcessing = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = "System Error: " + ex.Message;
+            IsProcessing = false;
+        }
+    }
+
+    private void HandleForgotPassword()
+    {
+        ErrorMessage = "Feature coming soon!";
+    }
+
+    private class LoginModel
+    {
+        [Required]
+        public string UserId { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+    }
+}

@@ -1,0 +1,171 @@
+﻿@page "/masters/temployee"
+@rendermode InteractiveServer
+
+@using ConferenceHallManagement.Web.ViewModels
+@using ConferenceHallManagement.web.Services
+@using Models_ConferenceHallManagement.AppDbModels
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+
+@inject ITempEmployeeRoleBlazorService Service
+@inject IMasterDataService MasterService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Employee Role Assignments</PageTitle>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="container-fluid py-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <h4 class="mb-0 fw-bold"><i class="bi bi-people-fill me-2"></i>Employee Roles</h4>
+                    @if (!isLoading)
+                    {
+                        <span class="badge bg-primary rounded-pill">@filteredRoles.Count</span>
+                    }
+                </div>
+                <div>
+                    <a class="btn btn-sm btn-success shadow-sm" href="/masters/temployee/create">
+                        <i class="bi bi-plus-lg me-1"></i> Add New Role
+                    </a>
+                </div>
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary spinner-border-sm" role="status"></div>
+                    <p class="mt-2 small text-muted">Loading...</p>
+                </div>
+            }
+            else if (!filteredRoles.Any())
+            {
+                <div class="alert alert-info text-center small py-2">
+                    No active assignments found.
+                </div>
+            }
+            else
+            {
+                <div class="card shadow-sm border-0">
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0 align-middle" style="font-size: 0.9rem;">
+                                <thead class="table-light text-muted text-uppercase small">
+                                    <tr>
+                                        <th class="ps-3">ID</th>
+                                        <th>Emp No</th>
+                                        <th>Location</th>
+                                        <th>Role</th>
+                                        <th>Status</th>
+                                        <th class="text-end pe-3">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var role in filteredRoles)
+                                    {
+                                        <tr>
+                                            <td class="ps-3 fw-bold text-muted">@role.Id</td>
+                                            <td><span class="fw-bold text-dark">@role.EmployeeNo</span></td>
+                                            <td>@GetLocationName(role.LocationId)</td>
+                                            <td>
+                                                <span class="badge @GetRoleBadgeClass(role.RoleId) fw-normal">
+                                                    @GetRoleName(role.RoleId)
+                                                </span>
+                                            </td>
+                                            <td>
+                                                @if (role.IsActive)
+                                                {
+                                                    <span class="text-success small fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Active</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="text-danger small fw-bold"><i class="bi bi-x-circle-fill me-1"></i>Inactive</span>
+                                                }
+                                            </td>
+                                            <td class="text-end pe-3">
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="/masters/temployee/edit/@role.Id" class="btn btn-outline-primary" title="Edit">
+                                                        <i class="bi bi-pencil-square"></i>
+                                                    </a>
+                                                    <button class="btn btn-outline-danger" @onclick="() => DeleteRole(role.Id)" title="Delete">
+                                                        <i class="bi bi-trash3"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="alert alert-danger text-center m-5">Access Denied</div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<TempEmployeeRoleVM> roles = new();
+    private List<TempEmployeeRoleVM> filteredRoles = new();
+    private List<MasterLocation> locations = new();
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        locations = await MasterService.GetAllLocationsAsync();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            isLoading = true;
+            var data = await Service.GetAllAsync();
+            roles = data.ToList();
+            filteredRoles = new List<TempEmployeeRoleVM>(roles);
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task DeleteRole(int id)
+    {
+        var confirm = await JS.InvokeAsync<bool>("confirm", "Are you sure? This will soft delete the role.");
+        if (confirm)
+        {
+            await Service.DeleteAsync(id);
+            await LoadData();
+        }
+    }
+
+    private string GetLocationName(int id) => locations.FirstOrDefault(l => l.Id == id)?.LocationName ?? "-";
+
+    private string GetRoleName(int id) => id switch
+    {
+        1 => "Super Admin",
+        2 => "Central Admin",
+        3 => "Regional Admin",
+        4 => "Station Admin",
+        _ => "User"
+    };
+
+    private string GetRoleBadgeClass(int id) => id switch
+    {
+        1 => "bg-danger",
+        2 => "bg-warning text-dark",
+        3 => "bg-info text-dark",
+        4 => "bg-primary",
+        _ => "bg-secondary"
+    };
+}
