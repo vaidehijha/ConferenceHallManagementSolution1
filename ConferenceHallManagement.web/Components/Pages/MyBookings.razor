@@ -128,9 +128,22 @@
             {
                 <div class="text-center p-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2 text-muted">Loading your bookings...</p></div>
             }
+            else if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger m-3">
+                    <h5><i class="bi bi-exclamation-triangle-fill me-2"></i>Error</h5>
+                    <p>@ErrorMessage</p>
+                    <div class="mt-3">
+                        <button class="btn btn-primary" @onclick="LoadBookings">Retry</button>
+                    </div>
+                </div>
+            }
             else if (BookingsList == null || !BookingsList.Any())
             {
-                <div class="text-center p-5 text-muted"><i class="bi bi-calendar-x fs-1"></i><p class="mt-3">You haven't made any bookings yet.</p></div>
+                <div class="text-center p-5 text-muted">
+                    <i class="bi bi-calendar-x fs-1"></i>
+                    <p class="mt-3">You haven't made any bookings yet.</p>
+                </div>
             }
             else
             {
@@ -279,6 +292,7 @@
     private bool IsLoading { get; set; } = true;
     private bool ShowModal { get; set; } = false;
     private BookingListVM? SelectedBooking { get; set; }
+    private string? ErrorMessage { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
@@ -288,13 +302,29 @@
     private async Task LoadBookings()
     {
         IsLoading = true;
+        ErrorMessage = null;
+        
         try
         {
             var username = await UserSession.GetEmpId();
+            
+            if (string.IsNullOrEmpty(username))
+            {
+                ErrorMessage = "Unable to retrieve username from session. Please log out and log back in.";
+                return;
+            }
+            
             BookingsList = await BookingService.GetMyBookingsAsync(username);
         }
-        catch (Exception ex) { Console.WriteLine(ex.Message); }
-        finally { IsLoading = false; }
+        catch (Exception ex) 
+        { 
+            ErrorMessage = $"Error loading bookings: {ex.Message}";
+            Console.WriteLine($"Error in LoadBookings: {ex.ToString()}");
+        }
+        finally 
+        { 
+            IsLoading = false; 
+        }
     }
 
     private string GetCleanRemark(string rawRemark)

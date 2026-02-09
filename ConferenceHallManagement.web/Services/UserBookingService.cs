@@ -235,9 +235,27 @@ namespace ConferenceHallManagement.web.Services
         // --- 3. GET MY BOOKINGS (USER SPECIFIC) ---
         public async Task<List<BookingListVM>> GetMyBookingsAsync(string empName)
         {
-            // Reuse the main logic, but filter by username
-            var allBookings = await FetchBookingsInternalAsync(usernameFilter: empName);
-            return allBookings;
+            try
+            {
+                Console.WriteLine($"[GetMyBookingsAsync] Starting with empName: '{empName}'");
+                
+                if (string.IsNullOrWhiteSpace(empName))
+                {
+                    Console.WriteLine("[GetMyBookingsAsync] empName is null or empty, returning empty list");
+                    return new List<BookingListVM>();
+                }
+                
+                // Reuse the main logic, but filter by username
+                var allBookings = await FetchBookingsInternalAsync(usernameFilter: empName);
+                Console.WriteLine($"[GetMyBookingsAsync] Fetched {allBookings.Count} bookings for user: {empName}");
+                return allBookings;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[GetMyBookingsAsync] Exception: {ex.Message}");
+                Console.WriteLine($"[GetMyBookingsAsync] StackTrace: {ex.StackTrace}");
+                throw; // Re-throw so the UI can catch and display
+            }
         }
 
         // --- 4. GET ALL BOOKINGS (ADMIN VIEW) ---
@@ -424,78 +442,96 @@ namespace ConferenceHallManagement.web.Services
         // --- HELPER: COMMON FETCH LOGIC ---
         private async Task<List<BookingListVM>> FetchBookingsInternalAsync(string? usernameFilter)
         {
-            var context = _mainBookingRepo.GetContext();
-
-            var query = context.ConferenceHallBookings
-                .Include(b => b.Hall)
-                .Include(b => b.RoomType)
-                .Include(b => b.ConferenceHallBookingSessions)
-                .ThenInclude(bs => bs.Session)
-                .Where(b => b.Status != 3); // Exclude deleted
-
-            // Apply filter if username is provided (User View), otherwise fetch all (Admin View)
-            if (!string.IsNullOrEmpty(usernameFilter))
+            try
             {
-                query = query.Where(b => b.CreatedBy == usernameFilter);
-            }
+                Console.WriteLine($"[FetchBookingsInternalAsync] Starting with usernameFilter: '{usernameFilter}'");
+                
+                var context = _mainBookingRepo.GetContext();
 
-            var bookings = await query.OrderByDescending(b => b.CreatedOn).ToListAsync();
+                var query = context.ConferenceHallBookings
+                    .Include(b => b.Hall)
+                    .Include(b => b.RoomType)
+                    .Include(b => b.ConferenceHallBookingSessions)
+                    .ThenInclude(bs => bs.Session)
+                    .Where(b => b.Status != 3); // Exclude deleted
 
-            var list = new List<BookingListVM>();
+                // Apply filter if username is provided (User View), otherwise fetch all (Admin View)
+                if (!string.IsNullOrEmpty(usernameFilter))
+                {
+                    query = query.Where(b => b.CreatedBy == usernameFilter);
+                }
 
-            foreach (var b in bookings)
-            {
-                var allSessions = b.ConferenceHallBookingSessions
-                    .Select(s => new BookingSessionDetailVM
+                var bookings = await query.OrderByDescending(b => b.CreatedOn).ToListAsync();
+                Console.WriteLine($"[FetchBookingsInternalAsync] Found {bookings.Count} bookings in database");
+
+                var list = new List<BookingListVM>();
+
+                foreach (var b in bookings)
+                {
+                    var allSessions = b.ConferenceHallBookingSessions
+                        .Select(s => new BookingSessionDetailVM
+                        {
+                            RecordId = s.Id,
+                            Date = s.BookingDate,
+                            SessionTime = GetSessionTimeRange(s.SessionId, s.Session?.SessionEn),
+                            Status = s.Status == 1 ? "Pending" :
+                                     s.Status == 2 ? "Approved" :
+                                     s.Status == 3 ? "Cancelled" :
+                                     s.Status == 4 ? "Rejected" : "Unknown",
+                            StatusCode = s.Status,
+                            IsCancelled = s.Status == 3
+                        })
+                        .OrderBy(s => s.Date)
+                        .ToList();
+
+                    var activeSessions = allSessions.Where(x => !x.IsCancelled).ToList();
+
+                    // Skip bookings with no active sessions only for user view
+                    if (!activeSessions.Any() && usernameFilter != null)
                     {
-                        RecordId = s.Id,
-                        Date = s.BookingDate,
-                        SessionTime = GetSessionTimeRange(s.SessionId, s.Session?.SessionEn),
-                        Status = s.Status == 1 ? "Pending" :
-                                 s.Status == 2 ? "Approved" :
-                                 s.Status == 3 ? "Cancelled" :
-                                 s.Status == 4 ? "Rejected" : "Unknown",
-                        StatusCode = s.Status,
-                        IsCancelled = s.Status == 3
-                    })
-                    .OrderBy(s => s.Date)
-                    .ToList();
+                        Console.WriteLine($"[FetchBookingsInternalAsync] Skipping booking {b.BookingId} - no active sessions");
+                        continue;
+                    }
 
-                var activeSessions = allSessions.Where(x => !x.IsCancelled).ToList();
+                    // Status mapping based on your requirements
+                    string bookingStatus = b.Status switch
+                    {
+                        1 => "Pending For Approval",
+                        2 => "Approved",
+                        3 or 6 or 7 => "Self-Cancelled",
+                        4 => "Cancelled By Admin", // Rejected
+                        5 => "Auto Approved",
+                        13 or 25 => "Confirmed",
+                        _ => $"Unknown ({b.Status})"
+                    };
 
-                if (!activeSessions.Any() && usernameFilter != null) continue; // Skip empty bookings for users
+                    list.Add(new BookingListVM
+                    {
+                        BookingId = b.BookingId,
+                        HallName = b.Hall != null ? b.Hall.HallNameEn : "Unknown Hall",
+                        SeatingType = b.RoomType != null ? b.RoomType.RoomTypeEn : "Standard",
+                        FromDate = b.StartDate.ToString("dd-MMM-yyyy"),
+                        ToDate = b.EndDate.ToString("dd-MMM-yyyy"),
+                        ProgramName = b.ProgramName ?? "",
+                        Attendees = b.NoOfAttendees,
+                        Remarks = b.Remarks ?? "",
+                        BookingStatus = bookingStatus,
+                        BookedBy = b.CreatedBy ?? "Unknown",
+                        TotalSessionsBooked = allSessions.Count,
+                        ActiveSessionsCount = activeSessions.Count,
+                        SessionDetails = activeSessions
+                    });
+                }
 
-                // Status mapping based on your requirements
-                string bookingStatus = b.Status switch
-                {
-                    1 => "Pending For Approval",
-                    2 => "Approved",
-                    3 or 6 or 7 => "Self-Cancelled",
-                    4 => "Cancelled By Admin", // Rejected
-                    5 => "Auto Approved",
-                    13 or 25 => "Confirmed",
-                    _ => $"Unknown ({b.Status})"
-                };
-
-                list.Add(new BookingListVM
-                {
-                    BookingId = b.BookingId,
-                    HallName = b.Hall != null ? b.Hall.HallNameEn : "Unknown Hall",
-                    SeatingType = b.RoomType != null ? b.RoomType.RoomTypeEn : "Standard",
-                    FromDate = b.StartDate.ToString("dd-MMM-yyyy"),
-                    ToDate = b.EndDate.ToString("dd-MMM-yyyy"),
-                    ProgramName = b.ProgramName ?? "",
-                    Attendees = b.NoOfAttendees,
-                    Remarks = b.Remarks ?? "",
-                    BookingStatus = bookingStatus,
-                    BookedBy = b.CreatedBy ?? "Unknown",
-                    TotalSessionsBooked = allSessions.Count,
-                    ActiveSessionsCount = activeSessions.Count,
-                    SessionDetails = activeSessions
-                });
+                Console.WriteLine($"[FetchBookingsInternalAsync] Returning {list.Count} bookings after filtering");
+                return list;
             }
-
-            return list;
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[FetchBookingsInternalAsync] Exception: {ex.Message}");
+                Console.WriteLine($"[FetchBookingsInternalAsync] StackTrace: {ex.StackTrace}");
+                throw;
+            }
         }
 
         // --- 10. GET BOOKINGS BY HALL ID ---
