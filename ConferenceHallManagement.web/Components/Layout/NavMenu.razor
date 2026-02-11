@@ -1,5 +1,7 @@
 ﻿@rendermode InteractiveServer
 
+@using System.Security.Claims
+@using ConferenceHallManagement.Web.Services
 @inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthStateProvider
 
@@ -31,6 +33,7 @@
                     </NavLink>
                 </div>
 
+                @* User Section - Visible to All Authenticated Users *@
                 <div class="nav-item px-3">
                     <NavLink class="nav-link d-flex align-items-center gap-3" href="book-hall">
                         <i class="bi bi-calendar-plus" aria-hidden="true"></i>
@@ -45,50 +48,103 @@
                     </NavLink>
                 </div>
 
-                <div class="nav-item px-3 mt-3">
-                    <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Admin Panel</div>
-                </div>
+                @* Admin Panel - Visible to ALL Admin Roles (1,2,3,4) *@
+                @if (ShowAdminPanel)
+                {
+                    <div class="nav-item px-3 mt-3">
+                        <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Admin Panel</div>
+                    </div>
 
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link d-flex align-items-center gap-3" href="admin-bookings">
-                        <i class="bi bi-journal-text" aria-hidden="true"></i>
-                        <span>Booking Requests</span>
-                    </NavLink>
-                </div>
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link d-flex align-items-center gap-3" href="admin-bookings">
+                            <i class="bi bi-journal-text" aria-hidden="true"></i>
+                            <span>Booking Requests</span>
+                        </NavLink>
+                    </div>
 
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link d-flex align-items-center gap-3" href="manage-halls">
-                        <i class="bi bi-building" aria-hidden="true"></i>
-                        <span>Manage Halls</span>
-                    </NavLink>
-                </div>
+                    @* Manage Halls - For Central, Regional, Station Admin (2,3,4) *@
+                    @if (UserRoleId >= 2 && UserRoleId <= 4)
+                    {
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link d-flex align-items-center gap-3" href="manage-halls">
+                                <i class="bi bi-building" aria-hidden="true"></i>
+                                <span>Manage Halls</span>
+                            </NavLink>
+                        </div>
 
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/temployee">
-                        <i class="bi bi-people-fill" aria-hidden="true"></i>
-                        <span>Employee Roles</span>
-                    </NavLink>
-                </div>
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/temployee">
+                                <i class="bi bi-people-fill" aria-hidden="true"></i>
+                                <span>Employee Roles</span>
+                            </NavLink>
+                        </div>
+                    }
+                }
 
-                <div class="nav-item px-3 mt-3">
-                    <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Master Settings</div>
-                </div>
+                @* Master Settings - Only Super Admin (1) and Station Admin (4) *@
+                @if (UserRoleId == 1 || UserRoleId == 4)
+                {
+                    <div class="nav-item px-3 mt-3">
+                        <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Master Settings</div>
+                    </div>
 
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/booking-status">
-                        <i class="bi bi-flag" aria-hidden="true"></i>
-                        <span>Status Master</span>
-                    </NavLink>
-                </div>
+                    @if (IsSuperAdmin)
+                    {
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link d-flex align-items-center gap-3" href="manage-halls">
+                                <i class="bi bi-building" aria-hidden="true"></i>
+                                <span>Manage Halls</span>
+                            </NavLink>
+                        </div>
 
-                <div class="nav-item px-3">
-                    <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/room-type">
-                        <i class="bi bi-door-open" aria-hidden="true"></i>
-                        <span>Room Types</span>
-                    </NavLink>
-                </div>
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/temployee">
+                                <i class="bi bi-people-fill" aria-hidden="true"></i>
+                                <span>Employee Roles</span>
+                            </NavLink>
+                        </div>
+                    }
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/booking-status">
+                            <i class="bi bi-flag" aria-hidden="true"></i>
+                            <span>Status Master</span>
+                        </NavLink>
+                    </div>
+
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/room-type">
+                            <i class="bi bi-door-open" aria-hidden="true"></i>
+                            <span>Room Types</span>
+                        </NavLink>
+                    </div>
+                }
             </Authorized>
         </AuthorizeView>
 
     </nav>
 </div>
+
+@code {
+    private bool ShowAdminPanel = false;
+    private bool IsSuperAdmin = false;
+    private int UserRoleId = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            // Get RoleId from claims
+            UserRoleId = ClaimsHelper.GetPrimaryRoleId(user);
+
+            // Admin Panel visible for RoleId 1,2,3,4 (all admins)
+            ShowAdminPanel = UserRoleId > 0;
+
+            // Master Settings for Super Admin (1) and Station Admin (4)
+            IsSuperAdmin = UserRoleId == 1;
+        }
+    }
+}

@@ -37,7 +37,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<AuthenticationStateProvider, CookieAuthenticationStateProvider>();
 
-// --- USER SESSION SERVICE ---
+// --- USER SESSION SERVICE (Claims-based, no session storage) ---
 builder.Services.AddScoped<UserSessionService>();
 
 // --- DB CONTEXT ---
@@ -53,7 +53,7 @@ builder.Services.AddDbContext<EmpdetContext>(options =>
     options.UseSqlServer(connectionStringEmp);
 });
 
-// --- REPOSITORIES & SERVICES ---
+// --- REPOSITORIES ---
 builder.Services.AddScoped<IMasterBookingStatusDataRepository, MasterBookingStatusDataRepository>();
 builder.Services.AddScoped<IMasterRoomTypeDataRepository, MasterRoomTypeDataRepository>();
 builder.Services.AddScoped<IMasterTempEmployeeRoleDataRepository, MasterTempEmployeeRoleDataRepository>();
@@ -63,23 +63,23 @@ builder.Services.AddScoped<IEmpRoleRepository, EmpRoleRepository>();
 builder.Services.AddScoped<Repository_ConferenceHallManagement.AppDataRepositoy.IConferenceHallDataRepository, Repository_ConferenceHallManagement.AppDataRepositoy.ConferenceHallDataRepository>();
 builder.Services.AddScoped<ICHSessionDataRepository, CHSessionDataRepository>();
 builder.Services.AddScoped<ICHBookingSessionsDataRepository, CHBookingSessionsDataRepository>();
+builder.Services.AddScoped<IMasterRegionDataRepository, MasterRegionDataRepository>();
+builder.Services.AddScoped<IMasterLocationDataRepository, MasterLocationDataRepository>();
+builder.Services.AddScoped<IMasterRoleDataRepository, MasterRoleDataRepository>();
+
+// --- UNIT OF WORK ---
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
+// --- BUSINESS LOGIC LAYER (BLL) ---
 builder.Services.AddScoped<IBllEmployee, BLLEmployee>();
+builder.Services.AddScoped<IBllAuthenticationService, BllAuthenticationService>();
+
+// --- BLAZOR SERVICES ---
 builder.Services.AddScoped<IMasterBookingStatusBlazorService, MasterBookingStatusBlazorService>();
 builder.Services.AddScoped<IMasterRoomTypeBlazorService, MasterRoomTypeBlazorService>();
 builder.Services.AddScoped<ITempEmployeeRoleBlazorService, TempEmployeeRoleBlazorService>();
 builder.Services.AddScoped<ConferenceHallManagement.web.Services.HallConfigurationService>();
 builder.Services.AddScoped<IUserBookingService, UserBookingService>();
-builder.Services.AddScoped<ConferenceHallManagement.Web.Services.AuthState>();
-// Example in Program.cs
-builder.Services.AddScoped<IMasterRegionDataRepository, MasterRegionDataRepository>();
-builder.Services.AddScoped<IMasterLocationDataRepository, MasterLocationDataRepository>();
-builder.Services.AddScoped<IMasterRoleDataRepository, MasterRoleDataRepository>();
-// Program.cs
-builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
-// Program.cs me services section me:
-builder.Services.AddScoped<IMasterDataService, MasterDataService>();
-// Program.cs me 'builder.Services' wale section me ye add karo:
 builder.Services.AddScoped<IHallConfigurationService, HallConfigurationService>();
 builder.Services.AddScoped<IMasterDataService, MasterDataService>();
 

@@ -3,8 +3,12 @@
 
 @using ConferenceHallManagement.web.ViewModels
 @using ConferenceHallManagement.web.Services
+@using ConferenceHallManagement.Web.Services
 @using Models_ConferenceHallManagement.AppDbModels
+@using Models_ConferenceHallManagement.DTOs
+@using Models_ConferenceHallManagement.Extensions
 @using UoW_ConferenceHallManagement
+@using Repository_ConferenceHallManagement.UtilityRepository
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Text.RegularExpressions
@@ -12,6 +16,7 @@
 
 @inject IUserBookingService BookingService
 @inject IUnitOfWork _uow
+@inject IEmployeeRepository EmployeeRepo
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager NavManager
 @inject IJSRuntime JSRuntime
@@ -170,10 +175,16 @@
         <h4 class="mb-0 fw-bold text-dark">
             <i class="bi bi-journal-text me-2 text-primary"></i>Hall Booking Requests
         </h4>
-        @if (!string.IsNullOrEmpty(UserRoleName))
-        {
-            <span class="badge bg-secondary">@UserRoleName</span>
-        }
+        <div class="d-flex align-items-center gap-2">
+            @if (!string.IsNullOrEmpty(UserRoleName))
+            {
+                <span class="badge bg-primary">@UserRoleName</span>
+            }
+            @if (!string.IsNullOrEmpty(AccessDescription))
+            {
+                <span class="badge bg-info">@AccessDescription</span>
+            }
+        </div>
     </div>
 
     @if (IsLoading)
@@ -183,9 +194,12 @@
             <p class="mt-2 text-muted">Loading requests...</p>
         </div>
     }
-    else if (AllBookings == null || !AllBookings.Any())
+    else if (FilteredBookings == null || !FilteredBookings.Any())
     {
-        <div class="alert alert-info text-center shadow-sm">No booking requests found.</div>
+        <div class="alert alert-info text-center shadow-sm">
+            <i class="bi bi-info-circle me-2"></i>
+            No booking requests found for your access level.
+        </div>
     }
     else
     {
@@ -205,7 +219,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var item in AllBookings)
+                        @foreach (var item in FilteredBookings)
                         {
                             <tr>
                                 <td>
@@ -227,7 +241,7 @@
                                         }
                                         else if (item.EmpNo == item.BookedBy)
                                         {
-                                            <span class="user-meta">ID: @item.EmpNo</span>
+                                            
                                         }
 
                                         <span class="user-meta">Ph: @item.BookedByPhone</span>
@@ -266,12 +280,12 @@
 
 @if (ShowModal && SelectedBooking != null)
 {
-    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);">
-        <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);" @onclick="CloseModal">
+        <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-header-custom d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-bold"><i class="bi bi-eye me-2"></i>Booking #@SelectedBooking.BookingId</h5>
-                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal"></button>
+                    <button type="button" class="btn-close btn-close-white" @onclick="CloseModal" @onclick:stopPropagation="true"></button>
                 </div>
                 <div class="modal-body p-4">
 
@@ -355,10 +369,22 @@
                                             {
                                                 <span class="badge bg-secondary">Completed</span>
                                             }
-                                            else if (CanApproveReject && isPending)
+                                            else if (isPending && BookingAccessFilter.CanApproveReject(UserSession, SelectedBooking.LocationId))
                                             {
-                                                <button class="btn btn-success btn-sm py-0 px-2 me-1" @onclick="() => ApproveSession(session.RecordId)">Approve</button>
-                                                <button class="btn btn-danger btn-sm py-0 px-2" @onclick="() => RejectSession(session.RecordId)">Reject</button>
+                                                <button class="btn btn-success btn-sm py-1 px-2 me-1" 
+                                                        type="button"
+                                                        title="Approve" 
+                                                        @onclick="async () => await ApproveSession(session.RecordId)"
+                                                        @onclick:stopPropagation="true">
+                                                    <i class="bi bi-check-lg"></i>
+                                                </button>
+                                                <button class="btn btn-danger btn-sm py-1 px-2" 
+                                                        type="button"
+                                                        title="Reject" 
+                                                        @onclick="async () => await RejectSession(session.RecordId)"
+                                                        @onclick:stopPropagation="true">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
                                             }
                                             else
                                             {
@@ -375,17 +401,35 @@
                         <div class="text-center text-muted small py-3">No session details available.</div>
                     }
                 </div>
-                <div class="modal-footer py-2 bg-light">
-                    @if (CanApproveReject && SelectedBooking.BookingStatus.Contains("Pending"))
-                    {
-                        <button class="btn btn-success px-4 fw-bold me-2" @onclick="ApproveEntireBooking">
-                            <i class="bi bi-check-circle me-1"></i> Approve Entire Booking
-                        </button>
-                        <button class="btn btn-danger px-4 fw-bold me-2" @onclick="RejectEntireBooking">
-                            <i class="bi bi-x-circle me-1"></i> Reject Entire Booking
-                        </button>
-                    }
-                    <button class="btn btn-secondary px-4 fw-bold" @onclick="CloseModal">Close</button>
+                <div class="modal-footer py-3 bg-light d-flex justify-content-between">
+                    <div>
+                        @{
+                            // Check if there are any pending sessions
+                            bool hasPendingSessions = SelectedBooking?.SessionDetails?.Any(s => s.StatusCode == 1) ?? false;
+                        }
+                        @if (SelectedBooking != null && hasPendingSessions && 
+                             BookingAccessFilter.CanApproveReject(UserSession, SelectedBooking.LocationId))
+                        {
+                            <button class="btn btn-sm btn-success me-2" 
+                                    type="button"
+                                    @onclick="async () => await ApproveEntireBooking()"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-check-all me-1"></i>Approve All
+                            </button>
+                            <button class="btn btn-sm btn-danger" 
+                                    type="button"
+                                    @onclick="async () => await RejectEntireBooking()"
+                                    @onclick:stopPropagation="true">
+                                <i class="bi bi-x-circle me-1"></i>Reject All
+                            </button>
+                        }
+                    </div>
+                    <button class="btn btn-sm btn-secondary" 
+                            type="button"
+                            @onclick="CloseModal"
+                            @onclick:stopPropagation="true">
+                        Close
+                    </button>
                 </div>
             </div>
         </div>
@@ -397,14 +441,19 @@
     {
         public string EmpNo { get; set; } = "";
         public string BookedByPhone { get; set; } = "";
+        public int? RegionId { get; set; }
+        public int? LocationId { get; set; }
     }
 
     private List<AdminBookingDTO> AllBookings { get; set; } = new();
+    private List<AdminBookingDTO> FilteredBookings { get; set; } = new();
     private bool ShowModal = false;
     private AdminBookingDTO? SelectedBooking;
     private bool IsLoading = true;
     private bool CanApproveReject = false;
     private string UserRoleName = "";
+    private string AccessDescription = "";
+    private UserSessionDetails? UserSession;
 
     protected override async Task OnInitializedAsync()
     {
@@ -423,52 +472,133 @@
 
             if (user.Identity != null && user.Identity.IsAuthenticated)
             {
-                var empNoClaim = user.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
-                string empNo = empNoClaim?.Value ?? "";
-
-                if (!string.IsNullOrEmpty(empNo))
+                // Get user session from claims (no DB hit needed!)
+                UserSession = ClaimsHelper.GetSessionFromClaims(user);
+                
+                if (UserSession != null && UserSession.Roles.Any())
                 {
-                    var roleInfo = await _uow.EmpRole.GetUserRoleDetailsAsync(empNo);
-                    if (roleInfo != null)
+                    var primaryRole = UserSession.GetPrimaryRole();
+                    if (primaryRole != null)
                     {
-                        UserRoleName = roleInfo.MasterRole?.RoleName ?? "Admin";
-                        CanApproveReject = (roleInfo.RoleId >= 1 && roleInfo.RoleId <= 4);
+                        UserRoleName = primaryRole.RoleName;
+                        AccessDescription = BookingAccessFilter.GetAccessDescription(UserSession);
+                        
+                        // Determine if user can approve/reject based on role
+                        // Super Admin (1) and Station Admin (4) can approve
+                        CanApproveReject = primaryRole.RoleId == 1 || primaryRole.RoleId == 4;
 
-                        var entities = await _uow.ConferenceHallBookingDataRepository
-                            .GetFilteredBookings(roleInfo.RoleId, roleInfo.RegionId, roleInfo.LocationId);
+                        // Load ALL bookings from database with proper includes
+                        var allEntities = await _uow.ConferenceHallBookingDataRepository.GetFilteredBookings(
+                            primaryRole.RoleId, 
+                            primaryRole.RegionId, 
+                            primaryRole.LocationId
+                        );
 
-                        AllBookings = entities.Select(e => new AdminBookingDTO
+                        // Create temporary list to store bookings
+                        var tempBookings = new List<AdminBookingDTO>();
+
+                        foreach (var e in allEntities)
                         {
-                            BookingId = e.BookingId,
-                            HallName = e.Hall?.HallNameEn ?? "Unknown Hall",
+                            // Get employee name from repository
+                            var empDetails = await EmployeeRepo.GetEmployeeById(e.CreatedBy ?? "");
+                            string bookedByName = empDetails?.Empname ?? e.CreatedBy ?? "Unknown";
 
-                            // FIX: Access RoomType directly from Booking entity (Not from Hall)
-                            SeatingType = e.RoomType != null ? e.RoomType.RoomTypeEn : "Standard",
-
-                            BookedBy = e.CreatedBy ?? "Unknown",
-                            EmpNo = e.CreatedBy ?? "N/A",
-                            BookedByPhone = ParsePhoneFromRemarks(e.Remarks),
-                            ProgramName = e.ProgramName ?? "Meeting",
-
-                            // Correct DB Column
-                            Attendees = e.NoOfAttendees,
-
-                            FromDate = e.ConferenceHallBookingSessions.Any() ? e.ConferenceHallBookingSessions.Min(s => s.BookingDate).ToString("dd-MMM-yyyy") : "-",
-                            ToDate = e.ConferenceHallBookingSessions.Any() ? e.ConferenceHallBookingSessions.Max(s => s.BookingDate).ToString("dd-MMM-yyyy") : "-",
-                            Remarks = e.Remarks,
-                            BookingStatus = e.StatusNavigation != null ? e.StatusNavigation.StatusTextEn : "Pending",
-                            ActiveSessionsCount = e.ConferenceHallBookingSessions.Count,
-
-                            SessionDetails = e.ConferenceHallBookingSessions.Select(s => new BookingSessionDetailVM
+                            var booking = new AdminBookingDTO
                             {
-                                RecordId = s.Id,
-                                Date = s.BookingDate,
-                                SessionTime = s.Session != null ? s.Session.SessionEn : "Slot",
-                                Status = s.StatusNavigation != null ? s.StatusNavigation.StatusTextEn : "Pending",
-                                StatusCode = s.Status
-                            }).ToList()
+                                BookingId = e.BookingId,
+                                HallName = e.Hall?.HallNameEn ?? e.Hall?.HallNameHi ?? "Unknown Hall",
+                                SeatingType = e.RoomType?.RoomTypeEn ?? e.RoomType?.RoomTypeHi ?? "Standard",
+                                BookedBy = bookedByName, // Use actual name instead of EmpNo
+                                EmpNo = e.CreatedBy ?? "N/A",
+                                BookedByPhone = ParsePhoneFromRemarks(e.Remarks),
+                                ProgramName = e.ProgramName ?? "Meeting",
+                                Attendees = e.NoOfAttendees,
+                                FromDate = e.ConferenceHallBookingSessions != null && e.ConferenceHallBookingSessions.Any() 
+                                    ? e.ConferenceHallBookingSessions.Min(s => s.BookingDate).ToString("dd-MMM-yyyy") 
+                                    : "-",
+                                ToDate = e.ConferenceHallBookingSessions != null && e.ConferenceHallBookingSessions.Any() 
+                                    ? e.ConferenceHallBookingSessions.Max(s => s.BookingDate).ToString("dd-MMM-yyyy") 
+                                    : "-",
+                                Remarks = e.Remarks ?? string.Empty,
+                                BookingStatus = e.StatusNavigation?.StatusTextEn ?? "Pending",
+                                ActiveSessionsCount = e.ConferenceHallBookingSessions?.Count ?? 0,
+                                RegionId = e.Hall?.RegionId,
+                                LocationId = e.Hall?.LocationId,
+                                SessionDetails = e.ConferenceHallBookingSessions != null && e.ConferenceHallBookingSessions.Any()
+                                    ? e.ConferenceHallBookingSessions.Select(s => new BookingSessionDetailVM
+                                    {
+                                        RecordId = s.Id,
+                                        Date = s.BookingDate,
+                                        SessionTime = MapSessionIdToTime(s.SessionId, s.Session?.SessionEn),
+                                        Status = s.StatusNavigation?.StatusTextEn ?? "Pending",
+                                        StatusCode = s.Status
+                                }).OrderBy(s => s.Date).ToList()
+                                : new List<BookingSessionDetailVM>()
+                            };
 
-                        }).OrderByDescending(b => b.BookingId).ToList();
+                            tempBookings.Add(booking);
+                        }
+
+                        AllBookings = tempBookings.OrderByDescending(b => b.BookingId).ToList();
+
+                        // For Super Admin (1) and Central Admin (2), we need ALL bookings
+                        if (primaryRole.RoleId == 1 || primaryRole.RoleId == 2)
+                        {
+                            var allBookingsQuery = await _uow.ConferenceHallBookingDataRepository.GetFilteredBookings(1, null, null);
+                            tempBookings = new List<AdminBookingDTO>();
+
+                            foreach (var e in allBookingsQuery)
+                            {
+                                var empDetails = await EmployeeRepo.GetEmployeeById(e.CreatedBy ?? "");
+                                string bookedByName = empDetails?.Empname ?? e.CreatedBy ?? "Unknown";
+
+                                var booking = new AdminBookingDTO
+                                {
+                                    BookingId = e.BookingId,
+                                    HallName = e.Hall?.HallNameEn ?? e.Hall?.HallNameHi ?? "Unknown Hall",
+                                    SeatingType = e.RoomType?.RoomTypeEn ?? e.RoomType?.RoomTypeHi ?? "Standard",
+                                    BookedBy = bookedByName,
+                                    EmpNo = e.CreatedBy ?? "N/A",
+                                    BookedByPhone = ParsePhoneFromRemarks(e.Remarks),
+                                    ProgramName = e.ProgramName ?? "Meeting",
+                                    Attendees = e.NoOfAttendees,
+                                    FromDate = e.ConferenceHallBookingSessions != null && e.ConferenceHallBookingSessions.Any() 
+                                        ? e.ConferenceHallBookingSessions.Min(s => s.BookingDate).ToString("dd-MMM-yyyy") 
+                                        : "-",
+                                    ToDate = e.ConferenceHallBookingSessions != null && e.ConferenceHallBookingSessions.Any() 
+                                        ? e.ConferenceHallBookingSessions.Max(s => s.BookingDate).ToString("dd-MMM-yyyy") 
+                                        : "-",
+                                    Remarks = e.Remarks ?? string.Empty,
+                                    BookingStatus = e.StatusNavigation?.StatusTextEn ?? "Pending",
+                                    ActiveSessionsCount = e.ConferenceHallBookingSessions?.Count ?? 0,
+                                    RegionId = e.Hall?.RegionId,
+                                    LocationId = e.Hall?.LocationId,
+                                    SessionDetails = e.ConferenceHallBookingSessions != null && e.ConferenceHallBookingSessions.Any()
+                                        ? e.ConferenceHallBookingSessions.Select(s => new BookingSessionDetailVM
+                                        {
+                                            RecordId = s.Id,
+                                            Date = s.BookingDate,
+                                            SessionTime = MapSessionIdToTime(s.SessionId, s.Session?.SessionEn),
+                                            Status = s.StatusNavigation?.StatusTextEn ?? "Pending",
+                                            StatusCode = s.Status
+                                    }).OrderBy(s => s.Date).ToList()
+                                    : new List<BookingSessionDetailVM>()
+                                };
+
+                                tempBookings.Add(booking);
+                            }
+
+                            AllBookings = tempBookings.OrderByDescending(b => b.BookingId).ToList();
+                        }
+
+                        // Apply additional client-side filtering based on BookingAccessFilter
+                        FilteredBookings = BookingAccessFilter.FilterBookingsByRole(
+                            AllBookings, 
+                            UserSession,
+                            b => b.RegionId,
+                            b => b.LocationId,
+                            b => b.EmpNo
+                        );
                     }
                 }
             }
@@ -482,6 +612,13 @@
             IsLoading = false;
             StateHasChanged();
         }
+    }
+
+    private string MapSessionIdToTime(int sessionId, string? dbValue)
+    {
+        if (sessionId == 1) return "09:00 AM - 01:00 PM";
+        if (sessionId == 2) return "02:00 PM - 05:00 PM";
+        return dbValue ?? "Unknown Slot";
     }
 
     private string ParsePhoneFromRemarks(string remarks)
@@ -519,19 +656,25 @@
 
     private async Task ApproveSession(int sessionId)
     {
+        // Check if user can approve this specific session
+        if (SelectedBooking != null && !BookingAccessFilter.CanApproveReject(UserSession, SelectedBooking.LocationId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "You do not have permission to approve this booking.");
+            return;
+        }
+
         try
         {
             var success = await BookingService.UpdateSessionStatusAsync(sessionId, 2);
             if (success)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Session approved successfully!");
+                await JSRuntime.InvokeVoidAsync("toastrSuccess", "Session approved successfully!");
                 var bookingId = SelectedBooking?.BookingId;
                 await LoadAdminData();
                 
-                // Update the selected booking with refreshed data if modal is still open
                 if (bookingId.HasValue && ShowModal)
                 {
-                    SelectedBooking = AllBookings.FirstOrDefault(b => b.BookingId == bookingId.Value);
+                    SelectedBooking = FilteredBookings.FirstOrDefault(b => b.BookingId == bookingId.Value);
                     StateHasChanged();
                 }
                 else
@@ -541,30 +684,36 @@
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Failed to approve session. Please try again.");
+                await JSRuntime.InvokeVoidAsync("toastrError", "Failed to approve session");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("toastrError", $"Error: {ex.Message}");
         }
     }
 
     private async Task RejectSession(int sessionId)
     {
+        // Check if user can reject this specific session
+        if (SelectedBooking != null && !BookingAccessFilter.CanApproveReject(UserSession, SelectedBooking.LocationId))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "You do not have permission to reject this booking.");
+            return;
+        }
+
         try
         {
             var success = await BookingService.UpdateSessionStatusAsync(sessionId, 4);
             if (success)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Session rejected successfully!");
+                await JSRuntime.InvokeVoidAsync("toastrSuccess", "Session rejected successfully!");
                 var bookingId = SelectedBooking?.BookingId;
                 await LoadAdminData();
                 
-                // Update the selected booking with refreshed data if modal is still open
                 if (bookingId.HasValue && ShowModal)
                 {
-                    SelectedBooking = AllBookings.FirstOrDefault(b => b.BookingId == bookingId.Value);
+                    SelectedBooking = FilteredBookings.FirstOrDefault(b => b.BookingId == bookingId.Value);
                     StateHasChanged();
                 }
                 else
@@ -574,18 +723,25 @@
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Failed to reject session. Please try again.");
+                await JSRuntime.InvokeVoidAsync("toastrError", "Failed to reject session");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("toastrError", $"Error: {ex.Message}");
         }
     }
 
     private async Task ApproveEntireBooking()
     {
         if (SelectedBooking == null) return;
+
+        // Check permission
+        if (!BookingAccessFilter.CanApproveReject(UserSession, SelectedBooking.LocationId))
+        {
+            await JSRuntime.InvokeVoidAsync("toastrError", "You do not have permission to approve this booking");
+            return;
+        }
 
         try
         {
@@ -597,24 +753,31 @@
             var success = await BookingService.ApproveBookingAsync(SelectedBooking.BookingId);
             if (success)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Booking approved successfully!");
+                await JSRuntime.InvokeVoidAsync("toastrSuccess", "Booking approved successfully!");
                 await LoadAdminData();
                 CloseModal();
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Failed to approve booking. Please try again.");
+                await JSRuntime.InvokeVoidAsync("toastrError", "Failed to approve booking");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("toastrError", $"Error: {ex.Message}");
         }
     }
 
     private async Task RejectEntireBooking()
     {
         if (SelectedBooking == null) return;
+
+        // Check permission
+        if (!BookingAccessFilter.CanApproveReject(UserSession, SelectedBooking.LocationId))
+        {
+            await JSRuntime.InvokeVoidAsync("toastrError", "You do not have permission to reject this booking");
+            return;
+        }
 
         try
         {
@@ -626,18 +789,18 @@
             var success = await BookingService.RejectBookingAsync(SelectedBooking.BookingId);
             if (success)
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Booking rejected successfully!");
+                await JSRuntime.InvokeVoidAsync("toastrSuccess", "Booking rejected successfully!");
                 await LoadAdminData();
                 CloseModal();
             }
             else
             {
-                await JSRuntime.InvokeVoidAsync("alert", "Failed to reject booking. Please try again.");
+                await JSRuntime.InvokeVoidAsync("toastrError", "Failed to reject booking");
             }
         }
         catch (Exception ex)
         {
-            await JSRuntime.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("toastrError", $"Error: {ex.Message}");
         }
     }
 }

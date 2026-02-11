@@ -15,6 +15,59 @@ window.toastrInfo = function (message, title) {
     toastr.info(message, title || 'Info');
 };
 
+// SweetAlert2 Toast Notification (for login messages)
+window.showToast = function (message, type) {
+    const icons = {
+        'success': 'success',
+        'error': 'error',
+        'warning': 'warning',
+        'info': 'info'
+    };
+
+    Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: icons[type] || 'info',
+        title: message,
+        showConfirmButton: false,
+        timer: 3000,
+        timerProgressBar: true
+    });
+};
+
+// Login API Call
+window.loginUser = async function (userId, password) {
+    try {
+        const formData = new FormData();
+        formData.append('userId', userId);
+        formData.append('password', password);
+
+        const response = await fetch('/Account/Login', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            return {
+                success: false,
+                message: 'Server error occurred',
+                type: 'error',
+                redirectUrl: ''
+            };
+        }
+
+        const result = await response.json();
+        return result;
+    } catch (error) {
+        return {
+            success: false,
+            message: 'Network error: ' + error.message,
+            type: 'error',
+            redirectUrl: ''
+        };
+    }
+};
+
 // SweetAlert2 Confirmation Dialog
 window.showConfirmDialog = function (title, text, icon, confirmButtonText, cancelButtonText) {
     return new Promise((resolve) => {

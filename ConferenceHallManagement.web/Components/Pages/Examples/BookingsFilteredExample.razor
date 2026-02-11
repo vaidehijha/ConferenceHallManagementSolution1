@@ -1,0 +1,138 @@
+@page "/bookings-filtered"
+@rendermode InteractiveServer
+@using ConferenceHallManagement.Web.Services
+@using Models_ConferenceHallManagement.DTOs
+@using Models_ConferenceHallManagement.Extensions
+@inject UserSessionService SessionService
+@attribute [Microsoft.AspNetCore.Authorization.Authorize]
+
+<div class="container mt-4">
+    <h3>Conference Hall Bookings - Filtered by User Role & Location</h3>
+    
+    @if (userSession != null)
+    {
+        <div class="alert alert-info">
+            <strong>Viewing as:</strong> @userSession.GetPrimaryRoleName()
+            @if (selectedRole != null)
+            {
+                <span> | <strong>Region:</strong> @selectedRole.RegionName | <strong>Location:</strong> @selectedRole.LocationName</span>
+            }
+        </div>
+
+        @if (userSession.Roles.Count > 1)
+        {
+            <div class="mb-3">
+                <label class="form-label fw-bold">Switch Role/Location:</label>
+                <select class="form-select" @onchange="OnRoleChange">
+                    @foreach (var role in userSession.Roles)
+                    {
+                        <option value="@userSession.Roles.IndexOf(role)">
+                            @role.RoleName - @role.RegionName - @role.LocationName
+                        </option>
+                    }
+                </select>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-body">
+                <h5>Your Accessible Data:</h5>
+                <ul>
+                    <li><strong>Employee Number:</strong> @userSession.EmpNo</li>
+                    <li><strong>Current Role:</strong> @selectedRole?.RoleName</li>
+                    <li><strong>Region ID:</strong> @selectedRole?.RegionId</li>
+                    <li><strong>Location ID:</strong> @selectedRole?.LocationId</li>
+                </ul>
+
+                @* Example: Use these values to filter bookings *@
+                <div class="alert alert-success mt-3">
+                    <strong>Filter Logic Example:</strong><br/>
+                    @if (selectedRole?.RoleName == "Super Admin")
+                    {
+                        <span>? Can see ALL bookings (no filter)</span>
+                    }
+                    else if (selectedRole?.RoleName == "Central Admin")
+                    {
+                        <span>? Can see bookings for ALL regions</span>
+                    }
+                    else if (selectedRole?.RoleName == "Regional Admin")
+                    {
+                        <span>? Can see bookings for Region ID: @selectedRole.RegionId</span>
+                    }
+                    else if (selectedRole?.RoleName == "Station Admin")
+                    {
+                        <span>? Can see bookings for Location ID: @selectedRole.LocationId</span>
+                    }
+                    else
+                    {
+                        <span>? Can see only own bookings (EmpNo: @userSession.EmpNo)</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <p>Loading user session...</p>
+    }
+</div>
+
+@code {
+    private UserSessionDetails? userSession;
+    private UserRoleInfo? selectedRole;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Get complete user session from claims (NO DATABASE HIT!)
+        userSession = await SessionService.GetUserSessionAsync();
+        
+        // Default to first role
+        if (userSession?.Roles.Any() == true)
+        {
+            selectedRole = userSession.Roles.First();
+        }
+    }
+
+    private void OnRoleChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int index) && 
+            userSession != null && 
+            index >= 0 && 
+            index < userSession.Roles.Count)
+        {
+            selectedRole = userSession.Roles[index];
+            StateHasChanged();
+            
+            // Now you can use selectedRole.RegionId or selectedRole.LocationId
+            // to filter data in your database queries
+        }
+    }
+
+    // Example method: How to use role info to filter bookings
+    private async Task<List<object>> GetFilteredBookings()
+    {
+        if (selectedRole == null) return new List<object>();
+
+        // Pseudo-code for filtering logic
+        /*
+        if (selectedRole.RoleName == "Super Admin")
+        {
+            return await BookingRepo.GetAllBookings();
+        }
+        else if (selectedRole.RoleName == "Regional Admin")
+        {
+            return await BookingRepo.GetBookingsByRegion(selectedRole.RegionId.Value);
+        }
+        else if (selectedRole.RoleName == "Station Admin")
+        {
+            return await BookingRepo.GetBookingsByLocation(selectedRole.LocationId.Value);
+        }
+        else
+        {
+            return await BookingRepo.GetBookingsByEmployee(userSession.EmpNo);
+        }
+        */
+
+        return new List<object>();
+    }
+}

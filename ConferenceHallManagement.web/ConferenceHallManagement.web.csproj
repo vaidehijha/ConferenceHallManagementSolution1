@@ -29,4 +29,8 @@
     <ProjectReference Include="..\BLL_ConferenceHallManagement\BLL_ConferenceHallManagement.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Helpers\" />
+  </ItemGroup>
+
 </Project>

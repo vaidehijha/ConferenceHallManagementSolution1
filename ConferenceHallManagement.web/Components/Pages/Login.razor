@@ -4,9 +4,10 @@
 @attribute [AllowAnonymous]
 
 @using System.ComponentModel.DataAnnotations
-@using Repository_ConferenceHallManagement.UtilityRepository
+@using BLL_ConferenceHallManagement
 @inject NavigationManager Navigation
-@inject IEmployeeRepository _empRepo
+@inject IJSRuntime JSRuntime
+@inject IBllAuthenticationService AuthService
 
 <PageTitle>Login - Conference Hall Management</PageTitle>
 
@@ -23,11 +24,10 @@
 
             <EditForm Model="@loginModel" OnValidSubmit="HandleLogin" class="login-form">
 
-                @* Error Message Display *@
                 @if (!string.IsNullOrEmpty(ErrorMessage))
                 {
-                    <div class="alert alert-danger p-2 mb-3" style="font-size: 0.9rem;">
-                        <span>⚠️ @ErrorMessage</span>
+                    <div class="alert alert-danger" role="alert">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>@ErrorMessage
                     </div>
                 }
 
@@ -59,7 +59,7 @@
                                @bind="loginModel.Password"
                                id="password"
                                class="form-input"
-                               placeholder="Any Password"
+                               placeholder="Enter Password (Pass@123)"
                                required
                                autocomplete="current-password" />
                     </div>
@@ -142,44 +142,49 @@
     private async Task HandleLogin()
     {
         IsProcessing = true;
-        ErrorMessage = ""; // Reset errors
-
-        // 1. Check Captcha
-        if (!string.Equals(EnteredCaptcha, CaptchaCode, StringComparison.OrdinalIgnoreCase))
-        {
-            ErrorMessage = "Invalid CAPTCHA code.";
-            GenerateCaptcha();
-            IsProcessing = false;
-            return;
-        }
+        ErrorMessage = "";
+        StateHasChanged();
 
         try
         {
-            // 2. Check DB if User Exists (Password ignored as per request)
-            bool isValidUser = await _empRepo.AuthenticateUser(loginModel.UserId, loginModel.Password);
-
-            if (isValidUser)
+            // 1. Check Captcha
+            if (!string.Equals(EnteredCaptcha, CaptchaCode, StringComparison.OrdinalIgnoreCase))
             {
-                // 3. User found! Send to AccountController to set Cookie and Redirect based on Role
-                // Note: forceLoad: true is compulsory here for Cookies
-                Navigation.NavigateTo($"/Account/Login?userId={Uri.EscapeDataString(loginModel.UserId)}&password={Uri.EscapeDataString(loginModel.Password)}", forceLoad: true);
-            }
-            else
-            {
-                ErrorMessage = "Employee Number not found in Database.";
+                ErrorMessage = "Invalid CAPTCHA code";
+                GenerateCaptcha();
                 IsProcessing = false;
+                StateHasChanged();
+                return;
             }
+
+            // 2. Call authentication service directly
+            var loginResult = await AuthService.LoginAsync(loginModel.UserId, loginModel.Password);
+
+            if (!loginResult.Success)
+            {
+                ErrorMessage = loginResult.Message;
+                IsProcessing = false;
+                StateHasChanged();
+                return;
+            }
+
+            // 3. Success - redirect via controller to set cookie
+            // Use forceLoad to ensure proper navigation and cookie setting
+            Navigation.NavigateTo($"/Account/Login?userId={Uri.EscapeDataString(loginModel.UserId)}&password={Uri.EscapeDataString(loginModel.Password)}", forceLoad: true);
         }
         catch (Exception ex)
         {
-            ErrorMessage = "System Error: " + ex.Message;
+            Console.WriteLine($"Login Error: {ex.Message}");
+            Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            ErrorMessage = $"System Error: {ex.Message}";
             IsProcessing = false;
+            StateHasChanged();
         }
     }
 
-    private void HandleForgotPassword()
+    private async Task HandleForgotPassword()
     {
-        ErrorMessage = "Feature coming soon!";
+        await JSRuntime.InvokeVoidAsync("alert", "Feature coming soon!");
     }
 
     private class LoginModel
