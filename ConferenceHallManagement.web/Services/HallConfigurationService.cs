@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 
 namespace ConferenceHallManagement.web.Services
 {
-    // Interface implement kiya hai
     public class HallConfigurationService : IHallConfigurationService
     {
         private readonly IUnitOfWork _uow;
@@ -36,16 +35,28 @@ namespace ConferenceHallManagement.web.Services
             return new List<dynamic>();
         }
 
-        // --- 2. GET ALL HALLS (FIXED: Added Filter for Active Halls) ---
-        public async Task<List<HallConfigurationVM>> GetAllHallsAsync()
+        // --- 2. GET ALL HALLS (With Region and Location Filter) ---
+        public async Task<List<HallConfigurationVM>> GetAllHallsAsync(int? regionId = null, int? locationId = null)
         {
             var entities = await _uow.ConferenceHallDataRepository.GetAllAsync();
             var regions = await _uow.MasterRegionDataRepository.GetAllAsync();
             var locations = await _uow.MasterLocationDataRepository.GetAllAsync();
 
-            // YAHAN FIX KIYA HAI: .Where(e => e.Status == true) add kiya hai
-            return entities
-                .Where(e => e.Status == true)
+            var query = entities.Where(e => e.Status == true);
+            
+            // Apply region filter if provided (for Regional Admin)
+            if (regionId.HasValue && regionId.Value > 0)
+            {
+                query = query.Where(e => e.RegionId == regionId.Value);
+            }
+
+            // Apply location filter if provided (for Station Admin)
+            if (locationId.HasValue && locationId.Value > 0)
+            {
+                query = query.Where(e => e.LocationId == locationId.Value);
+            }
+
+            return query
                 .Select(e => new HallConfigurationVM
                 {
                     Id = e.HallId,

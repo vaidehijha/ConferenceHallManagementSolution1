@@ -7,12 +7,10 @@ namespace ConferenceHallManagement.web.Services
     public interface IHallConfigurationService
     {
         // CRUD Operations
-        Task<List<HallConfigurationVM>> GetAllHallsAsync();
+        Task<List<HallConfigurationVM>> GetAllHallsAsync(int? regionId = null, int? locationId = null);
         Task<HallConfigurationVM> GetHallByIdAsync(int id);
         Task<bool> CreateHallAsync(HallConfigurationVM model);
         Task<bool> UpdateHallAsync(HallConfigurationVM model);
         Task<bool> DeleteHallAsync(int id);
-
-        // Note: Dropdown methods ab MasterDataService me hain, isliye yahan nahi chahiye
     }
 }

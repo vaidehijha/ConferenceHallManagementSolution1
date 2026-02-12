@@ -81,29 +81,26 @@
                     }
                 }
 
-                @* Master Settings - Only Super Admin (1) and Station Admin (4) *@
-                @if (UserRoleId == 1 || UserRoleId == 4)
+                @* Master Settings - Only Super Admin (1) *@
+                @if (IsSuperAdmin)
                 {
                     <div class="nav-item px-3 mt-3">
                         <div class="text-uppercase text-light small fw-bold ms-3 mb-1">Master Settings</div>
                     </div>
 
-                    @if (IsSuperAdmin)
-                    {
-                        <div class="nav-item px-3">
-                            <NavLink class="nav-link d-flex align-items-center gap-3" href="manage-halls">
-                                <i class="bi bi-building" aria-hidden="true"></i>
-                                <span>Manage Halls</span>
-                            </NavLink>
-                        </div>
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link d-flex align-items-center gap-3" href="manage-halls">
+                            <i class="bi bi-building" aria-hidden="true"></i>
+                            <span>Manage Halls</span>
+                        </NavLink>
+                    </div>
 
-                        <div class="nav-item px-3">
-                            <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/temployee">
-                                <i class="bi bi-people-fill" aria-hidden="true"></i>
-                                <span>Employee Roles</span>
-                            </NavLink>
-                        </div>
-                    }
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/temployee">
+                            <i class="bi bi-people-fill" aria-hidden="true"></i>
+                            <span>Employee Roles</span>
+                        </NavLink>
+                    </div>
 
                     <div class="nav-item px-3">
                         <NavLink class="nav-link d-flex align-items-center gap-3" href="masters/booking-status">

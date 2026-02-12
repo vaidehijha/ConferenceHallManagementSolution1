@@ -2,13 +2,17 @@
 @rendermode InteractiveServer
 @using ConferenceHallManagement.Web.ViewModels
 @using ConferenceHallManagement.web.Services
+@using ConferenceHallManagement.Web.Services
 @using Models_ConferenceHallManagement.AppDbModels
+@using Models_ConferenceHallManagement.DTOs
+@using Models_ConferenceHallManagement.Extensions
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using UoW_ConferenceHallManagement
 
 @inject ITempEmployeeRoleBlazorService Service
 @inject IMasterDataService MasterService
+@inject UserSessionService SessionService
 @inject IUnitOfWork _uow
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -31,7 +35,7 @@
 
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-muted">REGION <span class="text-danger">*</span></label>
-                    <select class="form-select" value="@model.RegionId" @onchange="OnRegionChange">
+                    <select class="form-select" value="@model.RegionId" @onchange="OnRegionChange" disabled="@(isRegionalAdmin || isStationAdmin)">
                         <option value="0">-- Select Region --</option>
                         @foreach (var r in Regions)
                         {
@@ -42,7 +46,7 @@
 
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-muted">LOCATION <span class="text-danger">*</span></label>
-                    <InputSelect @bind-Value="model.LocationId" class="form-select" disabled="@(!Locations.Any())">
+                    <InputSelect @bind-Value="model.LocationId" class="form-select" disabled="@(isStationAdmin || !Locations.Any())">
                         <option value="0">-- Select Location --</option>
                         @foreach (var l in Locations)
                         {
@@ -82,35 +86,104 @@
     private bool isSaving = false;
     private List<MasterRegion> Regions = new();
     private List<MasterLocation> Locations = new();
-
-    // Yahan humne list ko Strongly Typed banaya hai (MasterRole)
     private List<MasterRole> AllowedRoles = new();
-    private int CurrentUserRoleId = 1;
+    private int CurrentUserRoleId = 0;
+    private int? CurrentUserRegionId = null;
+    private int? CurrentUserLocationId = null;
+    private bool isRegionalAdmin = false;
+    private bool isStationAdmin = false;
 
     protected override async Task OnInitializedAsync()
     {
-        // 1. Logged in user ka role le rahe hain
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var roleClaim = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+        // Get current user session
+        var userSession = await SessionService.GetUserSessionAsync();
+        if (userSession != null)
+        {
+            var primaryRole = userSession.GetPrimaryRole();
+            if (primaryRole != null)
+            {
+                CurrentUserRoleId = primaryRole.RoleId;
+                CurrentUserRegionId = primaryRole.RegionId;
+                CurrentUserLocationId = primaryRole.LocationId;
+                
+                // Check role type
+                if (CurrentUserRoleId == 3)
+                {
+                    isRegionalAdmin = true;
+                }
+                else if (CurrentUserRoleId == 4)
+                {
+                    isStationAdmin = true;
+                }
+            }
+        }
 
-        // Role ID Logic
-        if (roleClaim == "Super Admin") CurrentUserRoleId = 1;
-        else if (roleClaim == "Central Admin") CurrentUserRoleId = 2;
-        else if (roleClaim == "Regional Admin") CurrentUserRoleId = 3;
-        else if (roleClaim == "Station Admin") CurrentUserRoleId = 4;
+        // Load Regions
+        var allRegions = await MasterService.GetAllRegionsAsync();
+        
+        // Filter regions based on role
+        if (isRegionalAdmin && CurrentUserRegionId.HasValue)
+        {
+            Regions = allRegions.Where(r => r.Id == CurrentUserRegionId.Value).ToList();
+            model.RegionId = CurrentUserRegionId.Value;
+            Locations = await MasterService.GetLocationsByRegionAsync(CurrentUserRegionId.Value);
+        }
+        else if (isStationAdmin && CurrentUserRegionId.HasValue && CurrentUserLocationId.HasValue)
+        {
+            // Station Admin: Pre-select region and location
+            Regions = allRegions.Where(r => r.Id == CurrentUserRegionId.Value).ToList();
+            model.RegionId = CurrentUserRegionId.Value;
+            
+            var allLocations = await MasterService.GetLocationsByRegionAsync(CurrentUserRegionId.Value);
+            Locations = allLocations.Where(l => l.Id == CurrentUserLocationId.Value).ToList();
+            model.LocationId = CurrentUserLocationId.Value;
+        }
+        else
+        {
+            Regions = allRegions;
+        }
 
-        // 2. Regions Load karein
-        Regions = await MasterService.GetAllRegionsAsync();
-
-        // 3. Roles Load aur Filter karein (Direct Database Repo se)
+        // Load and filter Roles from Database
         var allDbRoles = await _uow.MasterRoleDataRepository.GetAllAsync();
 
-        // Hierarchy logic: Super Admin sab dekh sakta hai (1,2,3,4,5)
-        // Baki log sirf apna level ya niche ka level dekh sakte hain
-        AllowedRoles = allDbRoles
-            .Where(r => r.Id >= CurrentUserRoleId || r.Id == 5) // 5 Employee role ke liye
-            .OrderBy(r => r.Id)
-            .ToList();
+        // Filtering logic:
+        if (CurrentUserRoleId == 1)
+        {
+            // Super Admin sees all roles
+            AllowedRoles = allDbRoles.OrderBy(r => r.Id).ToList();
+        }
+        else if (CurrentUserRoleId == 2)
+        {
+            // Central Admin cannot see Super Admin (RoleId = 1)
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id >= 2)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
+        else if (CurrentUserRoleId == 3)
+        {
+            // Regional Admin can only assign Regional Admin (3) and Station Admin (4)
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id == 3 || r.Id == 4)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
+        else if (CurrentUserRoleId == 4)
+        {
+            // Station Admin can only assign Station Admin (4)
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id == 4)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
+        else
+        {
+            // Others see their level or below
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id >= CurrentUserRoleId)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
 
         StateHasChanged();
     }

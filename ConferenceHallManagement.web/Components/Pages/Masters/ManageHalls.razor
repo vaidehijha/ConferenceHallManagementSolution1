@@ -4,13 +4,17 @@
 @using System.ComponentModel.DataAnnotations
 @using ConferenceHallManagement.web.ViewModels
 @using ConferenceHallManagement.web.Services
+@using ConferenceHallManagement.Web.Services
 @using Models_ConferenceHallManagement.AppDbModels
+@using Models_ConferenceHallManagement.DTOs
+@using Models_ConferenceHallManagement.Extensions
 @using Microsoft.AspNetCore.Authorization
 
 @attribute [Authorize]
 @inject NavigationManager Navigation
 @inject IHallConfigurationService _hallService
 @inject IMasterDataService _masterService
+@inject UserSessionService _sessionService
 @inject IJSRuntime JS
 
 <PageTitle>Manage Conference Halls</PageTitle>
@@ -258,7 +262,7 @@
                             <div class="row mb-4">
                                 <div class="col-md-6">
                                     <label class="form-label">Region <span class="required-star">*</span></label>
-                                    <select class="form-select" value="@CurrentHall.RegionId" @onchange="OnRegionChanged">
+                                    <select class="form-select" value="@CurrentHall.RegionId" @onchange="OnRegionChanged" disabled="@(isRegionalAdmin || isStationAdmin)">
                                         <option value="0">-- Select Region --</option>
                                         @foreach (var reg in RegionList)
                                         {
@@ -273,7 +277,7 @@
 
                                 <div class="col-md-6">
                                     <label class="form-label">Location <span class="required-star">*</span></label>
-                                    <InputSelect class="form-select" @bind-Value="CurrentHall.LocationId" disabled="@(!FilteredLocations.Any())">
+                                    <InputSelect class="form-select" @bind-Value="CurrentHall.LocationId" disabled="@(isStationAdmin || !FilteredLocations.Any())">
                                         <option value="0">-- Select Location --</option>
                                         @foreach (var loc in FilteredLocations)
                                         {
@@ -306,7 +310,13 @@
     private bool isLoading = true;
     private bool IsRegionError = false;
 
-    // Now using the Shared ViewModel (No local classes)
+    // User session data
+    private UserSessionDetails? currentUser;
+    private int? userRegionId = null;
+    private int? userLocationId = null;
+    private bool isRegionalAdmin = false;
+    private bool isStationAdmin = false;
+
     private List<HallConfigurationVM> HallList = new();
     private List<MasterRegion> RegionList = new();
     private List<MasterLocation> AllLocations = new();
@@ -316,6 +326,29 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Get current user session
+        currentUser = await _sessionService.GetUserSessionAsync();
+        
+        // Check if user is Regional Admin or Station Admin and get their region/location
+        if (currentUser != null)
+        {
+            var primaryRole = currentUser.GetPrimaryRole();
+            if (primaryRole != null)
+            {
+                if (primaryRole.RoleName.Equals("Regional Admin", StringComparison.OrdinalIgnoreCase))
+                {
+                    isRegionalAdmin = true;
+                    userRegionId = primaryRole.RegionId;
+                }
+                else if (primaryRole.RoleName.Equals("Station Admin", StringComparison.OrdinalIgnoreCase))
+                {
+                    isStationAdmin = true;
+                    userRegionId = primaryRole.RegionId;
+                    userLocationId = primaryRole.LocationId;
+                }
+            }
+        }
+
         await LoadAllData();
     }
 
@@ -326,11 +359,32 @@
             isLoading = true;
 
             // 1. Dropdowns from MasterService
-            RegionList = await _masterService.GetAllRegionsAsync();
+            var allRegions = await _masterService.GetAllRegionsAsync();
+            
+            // Filter regions based on role
+            if (isRegionalAdmin && userRegionId.HasValue)
+            {
+                RegionList = allRegions.Where(r => r.Id == userRegionId.Value).ToList();
+            }
+            else if (isStationAdmin && userRegionId.HasValue)
+            {
+                RegionList = allRegions.Where(r => r.Id == userRegionId.Value).ToList();
+            }
+            else
+            {
+                RegionList = allRegions;
+            }
+            
             AllLocations = await _masterService.GetAllLocationsAsync();
 
-            // 2. Halls from HallService (Returns List<HallConfigurationVM> directly)
-            HallList = await _hallService.GetAllHallsAsync();
+            // Pre-load locations for Station Admin
+            if (isStationAdmin && userLocationId.HasValue)
+            {
+                FilteredLocations = AllLocations.Where(l => l.Id == userLocationId.Value).ToList();
+            }
+
+            // 2. Halls from HallService (with region/location filter)
+            HallList = await _hallService.GetAllHallsAsync(userRegionId, userLocationId);
         }
         catch (Exception ex)
         {
@@ -348,6 +402,21 @@
     {
         CurrentHall = new HallConfigurationVM();
         FilteredLocations = new();
+        
+        // Pre-set region and location for Station Admin
+        if (isStationAdmin && userRegionId.HasValue && userLocationId.HasValue)
+        {
+            CurrentHall.RegionId = userRegionId.Value;
+            CurrentHall.LocationId = userLocationId.Value;
+            FilteredLocations = AllLocations.Where(l => l.Id == userLocationId.Value).ToList();
+        }
+        // Pre-set region for Regional Admin
+        else if (isRegionalAdmin && userRegionId.HasValue)
+        {
+            CurrentHall.RegionId = userRegionId.Value;
+            LoadLocationsForRegion(userRegionId.Value);
+        }
+        
         IsEditMode = false;
         IsFormVisible = true;
     }
@@ -356,13 +425,25 @@
     {
         try
         {
-            // Fetch fresh data from Service
             var hall = await _hallService.GetHallByIdAsync(id);
             if (hall != null)
             {
+                // Station Admin can only edit halls in their location
+                if (isStationAdmin && userLocationId.HasValue && hall.LocationId != userLocationId.Value)
+                {
+                    await JS.InvokeVoidAsync("alert", "You can only edit halls in your location.");
+                    return;
+                }
+                
+                // Regional Admin can only edit halls in their region
+                if (isRegionalAdmin && userRegionId.HasValue && hall.RegionId != userRegionId.Value)
+                {
+                    await JS.InvokeVoidAsync("alert", "You can only edit halls in your region.");
+                    return;
+                }
+                
                 CurrentHall = hall;
 
-                // Trigger cascading manually to fill Location dropdown
                 if (CurrentHall.RegionId > 0)
                 {
                     FilteredLocations = await _masterService.GetLocationsByRegionAsync(CurrentHall.RegionId);
@@ -391,9 +472,8 @@
         if (int.TryParse(e.Value?.ToString(), out int rId) && rId > 0)
         {
             CurrentHall.RegionId = rId;
-            // Cascading via Service
-            FilteredLocations = await _masterService.GetLocationsByRegionAsync(rId);
-            CurrentHall.LocationId = 0; // Reset location
+            await LoadLocationsForRegion(rId);
+            CurrentHall.LocationId = 0;
             IsRegionError = false;
         }
         else
@@ -403,9 +483,28 @@
         }
     }
 
+    private async Task LoadLocationsForRegion(int regionId)
+    {
+        FilteredLocations = await _masterService.GetLocationsByRegionAsync(regionId);
+    }
+
     private async Task SaveHall()
     {
         if (CurrentHall.RegionId == 0) { IsRegionError = true; return; }
+
+        // Station Admin validation
+        if (isStationAdmin && userLocationId.HasValue && CurrentHall.LocationId != userLocationId.Value)
+        {
+            await JS.InvokeVoidAsync("alert", "You can only create/edit halls in your location.");
+            return;
+        }
+
+        // Regional Admin validation
+        if (isRegionalAdmin && userRegionId.HasValue && CurrentHall.RegionId != userRegionId.Value)
+        {
+            await JS.InvokeVoidAsync("alert", "You can only create/edit halls in your region.");
+            return;
+        }
 
         try
         {
@@ -438,6 +537,23 @@
 
     private async Task DeleteHall(int id, string name)
     {
+        // Find the hall to check region/location
+        var hall = HallList.FirstOrDefault(h => h.Id == id);
+        if (hall != null)
+        {
+            if (isStationAdmin && userLocationId.HasValue && hall.LocationId != userLocationId.Value)
+            {
+                await JS.InvokeVoidAsync("alert", "You can only delete halls in your location.");
+                return;
+            }
+            
+            if (isRegionalAdmin && userRegionId.HasValue && hall.RegionId != userRegionId.Value)
+            {
+                await JS.InvokeVoidAsync("alert", "You can only delete halls in your region.");
+                return;
+            }
+        }
+
         bool confirm = await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{name}'?");
         if (confirm)
         {

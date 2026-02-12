@@ -493,17 +493,56 @@ namespace ConferenceHallManagement.web.Services
                         continue;
                     }
 
-                    // Status mapping based on your requirements
-                    string bookingStatus = b.Status switch
+                    // Dynamic status calculation based on session statuses
+                    string bookingStatus;
+                    
+                    if (activeSessions.Any())
                     {
-                        1 => "Pending For Approval",
-                        2 => "Approved",
-                        3 or 6 or 7 => "Self-Cancelled",
-                        4 => "Cancelled By Admin", // Rejected
-                        5 => "Auto Approved",
-                        13 or 25 => "Confirmed",
-                        _ => $"Unknown ({b.Status})"
-                    };
+                        bool hasApproved = activeSessions.Any(s => s.StatusCode == 2);
+                        bool hasPending = activeSessions.Any(s => s.StatusCode == 1);
+                        bool hasRejected = activeSessions.Any(s => s.StatusCode == 4);
+                        bool allApproved = activeSessions.All(s => s.StatusCode == 2);
+                        bool allRejected = activeSessions.All(s => s.StatusCode == 4);
+
+                        if (allApproved)
+                        {
+                            bookingStatus = "Approved";
+                        }
+                        else if (allRejected)
+                        {
+                            bookingStatus = "Rejected";
+                        }
+                        else if (hasApproved && hasPending)
+                        {
+                            bookingStatus = "Partially Approved";
+                        }
+                        else if (hasRejected && hasPending)
+                        {
+                            bookingStatus = "Partially Rejected";
+                        }
+                        else if (hasPending)
+                        {
+                            bookingStatus = "Pending For Approval";
+                        }
+                        else
+                        {
+                            bookingStatus = "Mixed Status";
+                        }
+                    }
+                    else
+                    {
+                        // Fallback to main booking status if no active sessions
+                        bookingStatus = b.Status switch
+                        {
+                            1 => "Pending For Approval",
+                            2 => "Approved",
+                            3 or 6 or 7 => "Self-Cancelled",
+                            4 => "Cancelled By Admin",
+                            5 => "Auto Approved",
+                            13 or 25 => "Confirmed",
+                            _ => $"Unknown ({b.Status})"
+                        };
+                    }
 
                     list.Add(new BookingListVM
                     {
@@ -570,17 +609,56 @@ namespace ConferenceHallManagement.web.Services
 
                 var activeSessions = allSessions.Where(x => !x.IsCancelled).ToList();
 
-                // For hall-specific bookings, show all bookings including those with no active sessions
-                string bookingStatus = b.Status switch
+                // Dynamic status calculation based on session statuses
+                string bookingStatus;
+                
+                if (activeSessions.Any())
                 {
-                    1 => "Pending For Approval",
-                    2 => "Approved",
-                    3 or 6 or 7 => "Self-Cancelled",
-                    4 => "Cancelled By Admin",
-                    5 => "Auto Approved",
-                    13 or 25 => "Confirmed",
-                    _ => $"Unknown ({b.Status})"
-                };
+                    bool hasApproved = activeSessions.Any(s => s.StatusCode == 2);
+                    bool hasPending = activeSessions.Any(s => s.StatusCode == 1);
+                    bool hasRejected = activeSessions.Any(s => s.StatusCode == 4);
+                    bool allApproved = activeSessions.All(s => s.StatusCode == 2);
+                    bool allRejected = activeSessions.All(s => s.StatusCode == 4);
+
+                    if (allApproved)
+                    {
+                        bookingStatus = "Approved";
+                    }
+                    else if (allRejected)
+                    {
+                        bookingStatus = "Rejected";
+                    }
+                    else if (hasApproved && hasPending)
+                    {
+                        bookingStatus = "Partially Approved";
+                    }
+                    else if (hasRejected && hasPending)
+                    {
+                        bookingStatus = "Partially Rejected";
+                    }
+                    else if (hasPending)
+                    {
+                        bookingStatus = "Pending For Approval";
+                    }
+                    else
+                    {
+                        bookingStatus = "Mixed Status";
+                    }
+                }
+                else
+                {
+                    // Fallback to main booking status if no active sessions
+                    bookingStatus = b.Status switch
+                    {
+                        1 => "Pending For Approval",
+                        2 => "Approved",
+                        3 or 6 or 7 => "Self-Cancelled",
+                        4 => "Cancelled By Admin",
+                        5 => "Auto Approved",
+                        13 or 25 => "Confirmed",
+                        _ => $"Unknown ({b.Status})"
+                    };
+                }
 
                 list.Add(new BookingListVM
                 {

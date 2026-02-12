@@ -3,12 +3,16 @@
 
 @using ConferenceHallManagement.Web.ViewModels
 @using ConferenceHallManagement.web.Services
+@using ConferenceHallManagement.Web.Services
 @using Models_ConferenceHallManagement.AppDbModels
+@using Models_ConferenceHallManagement.DTOs
+@using Models_ConferenceHallManagement.Extensions
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 
 @inject ITempEmployeeRoleBlazorService Service
 @inject IMasterDataService MasterService
+@inject UserSessionService SessionService
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 
@@ -113,9 +117,26 @@
     private List<TempEmployeeRoleVM> filteredRoles = new();
     private List<MasterLocation> locations = new();
     private bool isLoading = true;
+    private UserSessionDetails? userSession;
+    private int currentUserRoleId = 0;
+    private int? currentUserRegionId = null;
+    private int? currentUserLocationId = null;
 
     protected override async Task OnInitializedAsync()
     {
+        // Get current user session
+        userSession = await SessionService.GetUserSessionAsync();
+        if (userSession != null)
+        {
+            var primaryRole = userSession.GetPrimaryRole();
+            if (primaryRole != null)
+            {
+                currentUserRoleId = primaryRole.RoleId;
+                currentUserRegionId = primaryRole.RegionId;
+                currentUserLocationId = primaryRole.LocationId;
+            }
+        }
+
         locations = await MasterService.GetAllLocationsAsync();
         await LoadData();
     }
@@ -127,7 +148,37 @@
             isLoading = true;
             var data = await Service.GetAllAsync();
             roles = data.ToList();
-            filteredRoles = new List<TempEmployeeRoleVM>(roles);
+            
+            // Apply role-based filtering
+            if (currentUserRoleId == 2)
+            {
+                // Central Admin (RoleId = 2) cannot see Super Admin (RoleId = 1)
+                filteredRoles = roles.Where(r => r.RoleId != 1).ToList();
+            }
+            else if (currentUserRoleId == 3 && currentUserRegionId.HasValue)
+            {
+                // Regional Admin (RoleId = 3) can only see:
+                // - Regional Admin (3) and Station Admin (4) roles
+                // - Only from their own region
+                filteredRoles = roles.Where(r => 
+                    (r.RoleId == 3 || r.RoleId == 4) && 
+                    r.RegionId == currentUserRegionId.Value
+                ).ToList();
+            }
+            else if (currentUserRoleId == 4 && currentUserLocationId.HasValue)
+            {
+                // Station Admin (RoleId = 4) can only see:
+                // - Station Admin (4) roles
+                // - Only from their own location
+                filteredRoles = roles.Where(r => 
+                    r.RoleId == 4 && 
+                    r.LocationId == currentUserLocationId.Value
+                ).ToList();
+            }
+            else
+            {
+                filteredRoles = new List<TempEmployeeRoleVM>(roles);
+            }
         }
         catch (Exception ex)
         {

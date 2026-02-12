@@ -2,12 +2,18 @@
 @rendermode InteractiveServer
 @using ConferenceHallManagement.Web.ViewModels
 @using ConferenceHallManagement.web.Services
+@using ConferenceHallManagement.Web.Services
 @using Models_ConferenceHallManagement.AppDbModels
+@using Models_ConferenceHallManagement.DTOs
+@using Models_ConferenceHallManagement.Extensions
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using UoW_ConferenceHallManagement
 
 @inject ITempEmployeeRoleBlazorService Service
 @inject IMasterDataService MasterService
+@inject UserSessionService SessionService
+@inject IUnitOfWork _uow
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthStateProvider
@@ -43,7 +49,7 @@
 
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted">REGION</label>
-                        <select class="form-select" value="@model.RegionId" @onchange="OnRegionChange">
+                        <select class="form-select" value="@model.RegionId" @onchange="OnRegionChange" disabled="@(isRegionalAdmin || isStationAdmin)">
                             <option value="0">-- Select Region --</option>
                             @foreach (var r in Regions)
                             {
@@ -54,7 +60,7 @@
 
                     <div class="mb-3">
                         <label class="form-label small fw-bold text-muted">LOCATION</label>
-                        <InputSelect @bind-Value="model.LocationId" class="form-select" disabled="@(!Locations.Any())">
+                        <InputSelect @bind-Value="model.LocationId" class="form-select" disabled="@(isStationAdmin || !Locations.Any())">
                             <option value="0">-- Select Location --</option>
                             @foreach (var l in Locations)
                             {
@@ -68,9 +74,7 @@
                         <InputSelect @bind-Value="model.RoleId" class="form-select">
                             @foreach (var role in AllowedRoles)
                             {
-                                <option value="@role.GetType().GetProperty("Id").GetValue(role, null)">
-                                    @role.GetType().GetProperty("RoleName").GetValue(role, null)
-                                </option>
+                                <option value="@role.Id">@role.RoleName</option>
                             }
                         </InputSelect>
                     </div>
@@ -98,30 +102,145 @@
 
     private List<MasterRegion> Regions = new();
     private List<MasterLocation> Locations = new();
-    private List<dynamic> AllowedRoles = new();
-    private int CurrentUserRoleId = 1;
+    private List<MasterRole> AllowedRoles = new();
+    private int CurrentUserRoleId = 0;
+    private int? CurrentUserRegionId = null;
+    private int? CurrentUserLocationId = null;
+    private bool isRegionalAdmin = false;
+    private bool isStationAdmin = false;
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
-        var roleName = authState.User.FindFirst(ClaimTypes.Role)?.Value;
+        // Get current user session
+        var userSession = await SessionService.GetUserSessionAsync();
+        if (userSession != null)
+        {
+            var primaryRole = userSession.GetPrimaryRole();
+            if (primaryRole != null)
+            {
+                CurrentUserRoleId = primaryRole.RoleId;
+                CurrentUserRegionId = primaryRole.RegionId;
+                CurrentUserLocationId = primaryRole.LocationId;
+                
+                // Check role type
+                if (CurrentUserRoleId == 3)
+                {
+                    isRegionalAdmin = true;
+                }
+                else if (CurrentUserRoleId == 4)
+                {
+                    isStationAdmin = true;
+                }
+            }
+        }
 
-        if (roleName == "Super Admin") CurrentUserRoleId = 1;
-        else if (roleName == "Central Admin") CurrentUserRoleId = 2;
-        else if (roleName == "Regional Admin") CurrentUserRoleId = 3;
-        else if (roleName == "Station Admin") CurrentUserRoleId = 4;
+        // Load Regions
+        var allRegions = await MasterService.GetAllRegionsAsync();
+        
+        // Filter regions based on role
+        if (isRegionalAdmin && CurrentUserRegionId.HasValue)
+        {
+            Regions = allRegions.Where(r => r.Id == CurrentUserRegionId.Value).ToList();
+        }
+        else if (isStationAdmin && CurrentUserRegionId.HasValue)
+        {
+            Regions = allRegions.Where(r => r.Id == CurrentUserRegionId.Value).ToList();
+        }
+        else
+        {
+            Regions = allRegions;
+        }
+        
+        // Load and filter Roles from Database
+        var allDbRoles = await _uow.MasterRoleDataRepository.GetAllAsync();
 
-        Regions = await MasterService.GetAllRegionsAsync();
-        var allRoles = await MasterService.GetAllRolesAsync();
-
-        // Filter logic same as Create
-        AllowedRoles = allRoles.Where(r => (int)r.GetType().GetProperty("Id").GetValue(r, null) >= CurrentUserRoleId).ToList();
+        // Filtering logic:
+        if (CurrentUserRoleId == 1)
+        {
+            // Super Admin sees all roles
+            AllowedRoles = allDbRoles.OrderBy(r => r.Id).ToList();
+        }
+        else if (CurrentUserRoleId == 2)
+        {
+            // Central Admin cannot see Super Admin (RoleId = 1)
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id >= 2)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
+        else if (CurrentUserRoleId == 3)
+        {
+            // Regional Admin can only edit Regional Admin (3) and Station Admin (4)
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id == 3 || r.Id == 4)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
+        else if (CurrentUserRoleId == 4)
+        {
+            // Station Admin can only edit Station Admin (4)
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id == 4)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
+        else
+        {
+            // Others see their level or below
+            AllowedRoles = allDbRoles
+                .Where(r => r.Id >= CurrentUserRoleId)
+                .OrderBy(r => r.Id)
+                .ToList();
+        }
 
         model = await Service.GetByIdAsync(Id);
 
-        if (model != null && model.RegionId > 0)
+        if (model != null)
         {
-            Locations = await MasterService.GetLocationsByRegionAsync(model.RegionId);
+            // If Central Admin tries to edit a Super Admin role, redirect them back
+            if (CurrentUserRoleId == 2 && model.RoleId == 1)
+            {
+                await JS.InvokeVoidAsync("alert", "You do not have permission to edit Super Admin roles.");
+                Navigation.NavigateTo("/masters/temployee");
+                return;
+            }
+
+            // If Regional Admin tries to edit a role outside their region, redirect them back
+            if (isRegionalAdmin && CurrentUserRegionId.HasValue && model.RegionId != CurrentUserRegionId.Value)
+            {
+                await JS.InvokeVoidAsync("alert", "You can only edit roles in your region.");
+                Navigation.NavigateTo("/masters/temployee");
+                return;
+            }
+
+            // If Regional Admin tries to edit Super Admin or Central Admin, redirect them back
+            if (CurrentUserRoleId == 3 && (model.RoleId == 1 || model.RoleId == 2))
+            {
+                await JS.InvokeVoidAsync("alert", "You do not have permission to edit this role.");
+                Navigation.NavigateTo("/masters/temployee");
+                return;
+            }
+
+            // If Station Admin tries to edit a role outside their location, redirect them back
+            if (isStationAdmin && CurrentUserLocationId.HasValue && model.LocationId != CurrentUserLocationId.Value)
+            {
+                await JS.InvokeVoidAsync("alert", "You can only edit roles in your location.");
+                Navigation.NavigateTo("/masters/temployee");
+                return;
+            }
+
+            // If Station Admin tries to edit non-Station Admin roles, redirect them back
+            if (CurrentUserRoleId == 4 && model.RoleId != 4)
+            {
+                await JS.InvokeVoidAsync("alert", "You can only edit Station Admin roles.");
+                Navigation.NavigateTo("/masters/temployee");
+                return;
+            }
+
+            if (model.RegionId > 0)
+            {
+                Locations = await MasterService.GetLocationsByRegionAsync(model.RegionId);
+            }
         }
 
         isLoading = false;

@@ -243,28 +243,48 @@
                                 {
                                     foreach (var session in SelectedBooking.SessionDetails)
                                     {
+                                        bool isPastDate = session.Date.Date < DateTime.Today;
+                                        
                                         <tr>
                                             <td>@session.DisplayDate</td>
                                             <td>@session.SessionTime</td>
                                             <td>
-                                                @if (session.Date < DateTime.Today)
+                                                @if (isPastDate && session.StatusCode == 1)
+                                                {
+                                                    <span class="badge bg-info">Auto Approved</span>
+                                                }
+                                                else if (session.StatusCode == 2)
+                                                {
+                                                    <span class="badge bg-success">Approved</span>
+                                                }
+                                                else if (session.StatusCode == 1)
+                                                {
+                                                    <span class="badge bg-warning text-dark">Pending</span>
+                                                }
+                                                else if (session.StatusCode == 4)
+                                                {
+                                                    <span class="badge bg-danger">Rejected</span>
+                                                }
+                                                else if (session.StatusCode == 3)
+                                                {
+                                                    <span class="badge bg-secondary">Cancelled</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="badge bg-secondary">@session.Status</span>
+                                                }
+                                            </td>
+                                            <td>
+                                                @if (session.Date >= DateTime.Today && session.StatusCode != 3 && session.StatusCode != 4)
+                                                {
+                                                    <button class="btn btn-outline-danger btn-sm py-0 px-2" @onclick="() => CancelSpecificSession(session.RecordId)"><i class="bi bi-x"></i> Cancel</button>
+                                                }
+                                                else if (isPastDate)
                                                 {
                                                     <span class="badge bg-secondary">Completed</span>
                                                 }
                                                 else
                                                 {
-
-                                                    <span class="badge bg-success">Active</span>
-                                                }
-                                            </td>
-                                            <td>
-                                                @if (session.Date >= DateTime.Today)
-                                                {
-                                                    <button class="btn btn-outline-danger btn-sm py-0 px-2" @onclick="() => CancelSpecificSession(session.RecordId)"><i class="bi bi-x"></i> Cancel</button>
-                                                }
-                                                else
-                                                {
-
                                                     <span class="text-muted small">-</span>
                                                 }
                                             </td>
