@@ -22,125 +22,210 @@
 @inject IJSRuntime JSRuntime
 
 <style>
-    /* Screenshot-Matching Table Styles */
-    .admin-table-container {
-        background: #fff;
-        border-radius: 4px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        overflow: hidden;
+    /* Card-Based Styles */
+    .admin-bookings-container {
+        padding: 1rem;
+        max-width: 1000px;
+        margin: 0 auto;
     }
 
-    .admin-table {
-        font-size: 0.85rem;
-        border-collapse: collapse;
-        width: 100%;
-        border: 1px solid #e0e0e0;
-    }
-
-        .admin-table th {
-            background-color: #3f51b5; /* Matching the Blue Header */
-            color: white;
-            font-weight: 700;
-            text-transform: uppercase;
-            padding: 12px 15px;
-            text-align: left;
-            border: none;
-            letter-spacing: 0.5px;
-        }
-
-        .admin-table td {
-            background-color: #fff;
-            border-bottom: 1px solid #f0f0f0;
-            padding: 12px 15px;
-            vertical-align: top; /* Align to top for multi-line content */
-            color: #444;
-        }
-
-    /* Column Specific Styles */
-    .hall-name {
-        color: #2196f3;
-        font-weight: 700;
-        font-size: 0.95rem;
-        text-decoration: none;
-        display: block;
-        margin-bottom: 4px;
-    }
-
-    .user-name-block {
+    .page-header {
+        background: linear-gradient(135deg, #4a5f8f 0%, #5d7bb8 100%);
+        color: white;
+        padding: 0.75rem 1.25rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
         display: flex;
-        flex-direction: column;
-        gap: 2px;
+        justify-content: space-between;
+        align-items: center;
     }
 
-    .user-name-text {
-        font-weight: 700;
-        color: #222;
-        font-size: 0.9rem;
-    }
-
-    .user-meta {
-        font-size: 0.75rem;
-        color: #888;
-        display: block;
-    }
-
-    .program-name {
+    .page-title {
+        font-size: 1.1rem;
         font-weight: 600;
-        font-size: 0.9rem;
-        color: #333;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
 
-    /* Badges */
-    .status-badge {
-        padding: 6px 12px;
-        border-radius: 20px;
+    .access-badges {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .badge {
+        padding: 0.35rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-primary {
+        background: white;
+        color: #4a5f8f;
+    }
+
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .booking-card {
+        background: white;
+        border: 2px solid #5d7bb8;
+        border-radius: 6px;
+        padding: 0.85rem 1rem;
+        margin-bottom: 0.85rem;
+        transition: transform 0.2s, box-shadow 0.2s;
+        position: relative;
+    }
+
+    .booking-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(93, 123, 184, 0.2);
+    }
+
+    .card-header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.65rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #e9ecef;
+    }
+
+    .hall-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #2196f3;
+        margin-bottom: 0.35rem;
+    }
+
+    .room-type-badge {
+        display: inline-block;
+        background: #e8f4f8;
+        color: #0277bd;
+        padding: 0.25rem 0.65rem;
+        border-radius: 12px;
         font-size: 0.7rem;
         font-weight: 600;
-        color: white;
-        display: inline-block;
-        min-width: 100px;
-        text-align: center;
-        text-transform: capitalize;
     }
 
-    .status-auto {
-        background-color: #00bcd4;
-    }
-
-    .status-approved {
-        background-color: #4caf50;
-    }
-
-    .status-pending {
-        background-color: #ff9800;
-    }
-
-    .status-rejected {
-        background-color: #f44336;
-    }
-
-    .status-completed {
-        background-color: #6c757d;
+    .sessions-count {
+        font-size: 0.7rem;
+        color: #6c757d;
+        margin-top: 0.3rem;
     }
 
     .btn-view {
         color: #3f51b5;
         font-weight: 700;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         background: transparent;
-        border: 1px solid transparent;
-        padding: 5px 10px;
+        border: 1px solid #3f51b5;
+        padding: 6px 12px;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        gap: 5px;
+        gap: 4px;
+        border-radius: 4px;
+        transition: all 0.2s;
     }
 
-        .btn-view:hover {
-            background-color: #e8eaf6;
-            border-radius: 4px;
-            color: #2c3e50;
-        }
+    .btn-view:hover {
+        background-color: #3f51b5;
+        color: white;
+    }
+
+    .card-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem 1.25rem;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+
+    .info-label {
+        font-size: 0.65rem;
+        color: #6c757d;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+    }
+
+    .info-value {
+        font-size: 0.82rem;
+        color: #2c3e50;
+        font-weight: 500;
+    }
+
+    .user-name-block {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+    }
+
+    .user-name-text {
+        font-weight: 700;
+        color: #222;
+        font-size: 0.82rem;
+    }
+
+    .user-meta {
+        font-size: 0.7rem;
+        color: #888;
+        display: block;
+    }
+
+    .program-name {
+        font-weight: 700;
+        font-size: 0.82rem;
+        color: #333;
+    }
+
+    .attendees-value {
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: #000;
+    }
+
+    .date-section {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+
+    .date-value {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .date-separator {
+        width: 18px;
+        height: 2px;
+        background: linear-gradient(to right, #ffc107, #ff9800);
+        border-radius: 2px;
+    }
+
+    .remarks-item {
+        grid-column: 1 / -1;
+        margin-top: 0.35rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .remarks-value {
+        font-size: 0.78rem;
+        color: #6c757d;
+        font-style: italic;
+    }
 
     /* Modal Styles */
     .detail-label {
@@ -168,113 +253,128 @@
     .btn-close-white {
         filter: invert(1) grayscale(100%) brightness(200%);
     }
+
+    .loading-state {
+        text-align: center;
+        padding: 3rem 1rem;
+    }
+
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+        border-width: 0.3rem;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #6c757d;
+    }
+
+    .empty-state i {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+        opacity: 0.5;
+    }
 </style>
 
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0 fw-bold text-dark">
-            <i class="bi bi-journal-text me-2 text-primary"></i>Hall Booking Requests
+<div class="admin-bookings-container">
+    <div class="page-header">
+        <h4 class="page-title">
+            <i class="bi bi-journal-text"></i>
+            <span>Hall Booking Requests</span>
         </h4>
-        <div class="d-flex align-items-center gap-2">
-            @if (!string.IsNullOrEmpty(UserRoleName))
-            {
-                <span class="badge bg-primary">@UserRoleName</span>
-            }
-            @if (!string.IsNullOrEmpty(AccessDescription))
-            {
-                <span class="badge bg-info">@AccessDescription</span>
-            }
-        </div>
+        @if (!string.IsNullOrEmpty(UserRoleName) || !string.IsNullOrEmpty(AccessDescription))
+        {
+            <div class="access-badges">
+                @if (!string.IsNullOrEmpty(UserRoleName))
+                {
+                    <span class="badge badge-primary">@UserRoleName</span>
+                }
+                @if (!string.IsNullOrEmpty(AccessDescription))
+                {
+                    <span class="badge badge-info">@AccessDescription</span>
+                }
+            </div>
+        }
     </div>
 
     @if (IsLoading)
     {
-        <div class="text-center py-5">
+        <div class="loading-state">
             <div class="spinner-border text-primary" role="status"></div>
-            <p class="mt-2 text-muted">Loading requests...</p>
+            <p class="mt-3 text-muted">Loading requests...</p>
         </div>
     }
     else if (FilteredBookings == null || !FilteredBookings.Any())
     {
-        <div class="alert alert-info text-center shadow-sm">
-            <i class="bi bi-info-circle me-2"></i>
-            No booking requests found for your access level.
+        <div class="empty-state">
+            <i class="bi bi-inbox"></i>
+            <p class="mt-3">No booking requests found for your access level.</p>
         </div>
     }
     else
     {
-        <div class="admin-table-container">
-            <div class="table-responsive">
-                <table class="admin-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 22%;">Hall Details</th>
-                            <th style="width: 11%;">Room Type</th>
-                            <th style="width: 17%;">Booked By</th>
-                            <th style="width: 17%;">Program Name</th>
-                            <th style="width: 6%; text-align: center;">Att.</th>
-                            <th style="width: 12%; text-align: center;">Dates</th>
-                            <th style="width: 18%;">Remarks</th>
-                            <th style="width: 7%; text-align: center;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in FilteredBookings)
-                        {
-                            <tr>
-                                <td>
-                                    <span class="hall-name">@item.HallName</span>
-                                    <span class="text-muted small">Sessions: @item.ActiveSessionsCount</span>
-                                </td>
+        @foreach (var item in FilteredBookings)
+        {
+            <div class="booking-card">
+                <!-- Card Header -->
+                <div class="card-header-section">
+                    <div>
+                        <div class="hall-title">@item.HallName</div>
+                        <div class="room-type-badge">@item.SeatingType</div>
+                        <div class="sessions-count">Sessions: @item.ActiveSessionsCount</div>
+                    </div>
+                    <button class="btn-view" @onclick="() => OpenAdminModal(item)">
+                        <i class="bi bi-eye-fill"></i> VIEW
+                    </button>
+                </div>
 
-                                <td>
-                                    <span style="font-weight: 500; font-size: 0.85rem; color: #555;">@item.SeatingType</span>
-                                </td>
+                <!-- Card Content Grid -->
+                <div class="card-content">
+                    <!-- Booked By -->
+                    <div class="info-item">
+                        <span class="info-label">Booked By</span>
+                        <div class="user-name-block">
+                            <span class="user-name-text">@item.BookedBy</span>
+                            @if (!string.IsNullOrEmpty(item.EmpNo) && item.EmpNo != "N/A" && item.EmpNo != item.BookedBy)
+                            {
+                                <span class="user-meta">ID: @item.EmpNo</span>
+                            }
+                            <span class="user-meta">Ph: @item.BookedByPhone</span>
+                        </div>
+                    </div>
 
-                                <td>
-                                    <div class="user-name-block">
-                                        <span class="user-name-text">@item.BookedBy</span>
+                    <!-- Program Name -->
+                    <div class="info-item">
+                        <span class="info-label">Program Name</span>
+                        <span class="info-value program-name">@item.ProgramName</span>
+                    </div>
 
-                                        @if (!string.IsNullOrEmpty(item.EmpNo) && item.EmpNo != "N/A" && item.EmpNo != item.BookedBy)
-                                        {
-                                            <span class="user-meta">ID: @item.EmpNo</span>
-                                        }
-                                        else if (item.EmpNo == item.BookedBy)
-                                        {
-                                            
-                                        }
+                    <!-- Dates -->
+                    <div class="info-item">
+                        <span class="info-label">Dates</span>
+                        <div class="date-section">
+                            <span class="date-value">@item.FromDate</span>
+                            <div class="date-separator"></div>
+                            <span class="date-value">@item.ToDate</span>
+                        </div>
+                    </div>
 
-                                        <span class="user-meta">Ph: @item.BookedByPhone</span>
-                                    </div>
-                                </td>
+                    <!-- Attendees -->
+                    <div class="info-item">
+                        <span class="info-label">Attendees (Att.)</span>
+                        <span class="info-value attendees-value">@item.Attendees</span>
+                    </div>
 
-                                <td><span class="program-name">@item.ProgramName</span></td>
-
-                                <td class="text-center" style="font-weight: 600;">@item.Attendees</td>
-
-                                <td class="text-center">
-                                    <div style="line-height: 1.2;">
-                                        <span class="date-text">@item.FromDate</span>
-                                        <span style="font-size: 0.7rem; color: #999; display: block;">to</span>
-                                        <span class="date-text">@item.ToDate</span>
-                                    </div>
-                                </td>
-
-                                <td>
-                                    <small class="text-muted text-break">@GetCleanRemark(item.Remarks)</small>
-                                </td>
-
-                                <td class="text-center">
-                                    <button class="btn-view" @onclick="() => OpenAdminModal(item)">
-                                        <i class="bi bi-eye-fill"></i> VIEW
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
+                    <!-- Remarks -->
+                    <div class="info-item remarks-item">
+                        <span class="info-label">Remarks</span>
+                        <span class="remarks-value">@GetCleanRemark(item.Remarks)</span>
+                    </div>
+                </div>
             </div>
-        </div>
+        }
     }
 </div>
 

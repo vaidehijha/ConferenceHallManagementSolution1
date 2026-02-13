@@ -266,6 +266,16 @@
         color: #721c24;
     }
 
+    .status-rejected {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .status-partially-approved {
+        background: #fff3cd;
+        color: #856404;
+    }
+
     /* Modal Styles */
     .modal-backdrop {
         position: fixed;
@@ -538,13 +548,10 @@
                             <span class="info-value">@GetCleanRemark(item.Remarks)</span>
                         </div>
                         @{
-                            string statusClass = item.BookingStatus.Contains("Pending") ? "status-pending" : 
-                                               item.BookingStatus.Contains("Cancel") ? "status-cancelled" : 
-                                               (item.BookingStatus.Contains("Approved") || item.BookingStatus.Contains("Auto")) ? "status-approved" : 
-                                               "status-pending";
+                            var statusInfo = GetBookingStatus(item);
                         }
-                        <div class="status-badge @statusClass">
-                            @item.BookingStatus
+                        <div class="status-badge @statusInfo.StatusClass">
+                            @statusInfo.StatusText
                         </div>
                     </div>
                 </div>
@@ -747,6 +754,71 @@
         int bracketIndex = cleanRemark.IndexOf("[");
         if (bracketIndex > 0) { cleanRemark = cleanRemark.Substring(0, bracketIndex).Trim(); }
         return string.IsNullOrWhiteSpace(cleanRemark) ? "-" : cleanRemark;
+    }
+
+    private (string StatusText, string StatusClass) GetBookingStatus(BookingListVM item)
+    {
+        if (item.SessionDetails == null || !item.SessionDetails.Any())
+        {
+            return ("Pending", "status-pending");
+        }
+
+        // Filter only active sessions (future dates or today)
+        var activeSessions = item.SessionDetails.Where(s => s.Date.Date >= DateTime.Today).ToList();
+        
+        // If no active sessions, check past sessions to determine completed status
+        if (!activeSessions.Any())
+        {
+            var pastSessions = item.SessionDetails.Where(s => s.Date.Date < DateTime.Today).ToList();
+            if (pastSessions.Any())
+            {
+                var allApproved = pastSessions.All(s => s.StatusCode == 2);
+                if (allApproved)
+                {
+                    return ("Approved", "status-approved");
+                }
+            }
+            return ("Completed", "status-approved");
+        }
+
+        // Count session statuses for active sessions only
+        var approvedCount = activeSessions.Count(s => s.StatusCode == 2);
+        var rejectedCount = activeSessions.Count(s => s.StatusCode == 4);
+        var pendingCount = activeSessions.Count(s => s.StatusCode == 1);
+        var cancelledCount = activeSessions.Count(s => s.StatusCode == 3);
+
+        // All approved
+        if (approvedCount == activeSessions.Count)
+        {
+            return ("Approved", "status-approved");
+        }
+        // All rejected
+        else if (rejectedCount == activeSessions.Count)
+        {
+            return ("Rejected", "status-rejected");
+        }
+        // All cancelled
+        else if (cancelledCount == activeSessions.Count)
+        {
+            return ("Cancelled", "status-cancelled");
+        }
+        // Mix of approved and rejected/pending
+        else if (approvedCount > 0 && (rejectedCount > 0 || pendingCount > 0))
+        {
+            return ("Partially Approved", "status-partially-approved");
+        }
+        // Mix of rejected and pending
+        else if (rejectedCount > 0 && pendingCount > 0)
+        {
+            return ("Partially Approved", "status-partially-approved");
+        }
+        // All pending
+        else if (pendingCount > 0)
+        {
+            return ("Pending", "status-pending");
+        }
+
+        return ("Partially Approved", "status-partially-approved");
     }
 
     private void ToggleMenu(int bookingId)
