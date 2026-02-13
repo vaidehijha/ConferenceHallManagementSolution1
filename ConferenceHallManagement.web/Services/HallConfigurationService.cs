@@ -96,8 +96,10 @@ namespace ConferenceHallManagement.web.Services
 
                 Sessions = entity.ConferenceHallSessions?.Select(s => new SessionConfigVM
                 {
-                    Id = s.SessionId,
-                    SessionName = s.SessionName,
+                    SessionId = s.SessionId,
+                    SessionName = s.SessionEn ?? s.SessionName,
+                    SessionEn = s.SessionEn ?? string.Empty,
+                    SessionHi = s.SessionHi ?? string.Empty,
                     StartTime = DateTime.Today.Add(s.StartTime),
                     EndTime = DateTime.Today.Add(s.EndTime),
                     Price = s.Price

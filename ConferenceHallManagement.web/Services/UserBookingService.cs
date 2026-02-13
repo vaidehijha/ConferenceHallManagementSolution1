@@ -447,6 +447,7 @@ namespace ConferenceHallManagement.web.Services
                 Console.WriteLine($"[FetchBookingsInternalAsync] Starting with usernameFilter: '{usernameFilter}'");
                 
                 var context = _mainBookingRepo.GetContext();
+                var today = DateTime.Today;
 
                 var query = context.ConferenceHallBookings
                     .Include(b => b.Hall)
@@ -469,17 +470,32 @@ namespace ConferenceHallManagement.web.Services
                 foreach (var b in bookings)
                 {
                     var allSessions = b.ConferenceHallBookingSessions
-                        .Select(s => new BookingSessionDetailVM
+                        .Select(s =>
                         {
-                            RecordId = s.Id,
-                            Date = s.BookingDate,
-                            SessionTime = GetSessionTimeRange(s.SessionId, s.Session?.SessionEn),
-                            Status = s.Status == 1 ? "Pending" :
-                                     s.Status == 2 ? "Approved" :
-                                     s.Status == 3 ? "Cancelled" :
-                                     s.Status == 4 ? "Rejected" : "Unknown",
-                            StatusCode = s.Status,
-                            IsCancelled = s.Status == 3
+                            // Check if session is past date and still pending - treat as Auto Approved
+                            bool isPastDate = s.BookingDate.Date < today;
+                            int effectiveStatus = s.Status;
+                            string statusText = s.Status == 1 ? "Pending" :
+                                               s.Status == 2 ? "Approved" :
+                                               s.Status == 3 ? "Cancelled" :
+                                               s.Status == 4 ? "Rejected" : "Unknown";
+                            
+                            // If past date and still pending, treat as Auto Approved
+                            if (isPastDate && s.Status == 1)
+                            {
+                                effectiveStatus = 5; // Auto Approved
+                                statusText = "Auto Approved";
+                            }
+                            
+                            return new BookingSessionDetailVM
+                            {
+                                RecordId = s.Id,
+                                Date = s.BookingDate,
+                                SessionTime = GetSessionTimeRange(s.SessionId, s.Session?.SessionEn),
+                                Status = statusText,
+                                StatusCode = effectiveStatus,
+                                IsCancelled = s.Status == 3
+                            };
                         })
                         .OrderBy(s => s.Date)
                         .ToList();
@@ -493,20 +509,22 @@ namespace ConferenceHallManagement.web.Services
                         continue;
                     }
 
-                    // Dynamic status calculation based on session statuses
+                    // Dynamic status calculation based on EFFECTIVE session statuses (including auto-approved)
                     string bookingStatus;
                     
                     if (activeSessions.Any())
                     {
-                        bool hasApproved = activeSessions.Any(s => s.StatusCode == 2);
+                        bool hasApproved = activeSessions.Any(s => s.StatusCode == 2 || s.StatusCode == 5); // Approved or Auto Approved
                         bool hasPending = activeSessions.Any(s => s.StatusCode == 1);
                         bool hasRejected = activeSessions.Any(s => s.StatusCode == 4);
-                        bool allApproved = activeSessions.All(s => s.StatusCode == 2);
+                        bool allApproved = activeSessions.All(s => s.StatusCode == 2 || s.StatusCode == 5);
                         bool allRejected = activeSessions.All(s => s.StatusCode == 4);
 
                         if (allApproved)
                         {
-                            bookingStatus = "Approved";
+                            // Check if any are auto-approved
+                            bool hasAutoApproved = activeSessions.Any(s => s.StatusCode == 5);
+                            bookingStatus = hasAutoApproved ? "Auto Approved" : "Approved";
                         }
                         else if (allRejected)
                         {
@@ -577,6 +595,7 @@ namespace ConferenceHallManagement.web.Services
         public async Task<List<BookingListVM>> GetBookingsByHallIdAsync(int hallId)
         {
             var context = _mainBookingRepo.GetContext();
+            var today = DateTime.Today;
 
             var query = context.ConferenceHallBookings
                 .Include(b => b.Hall)
@@ -592,37 +611,54 @@ namespace ConferenceHallManagement.web.Services
             foreach (var b in bookings)
             {
                 var allSessions = b.ConferenceHallBookingSessions
-                    .Select(s => new BookingSessionDetailVM
+                    .Select(s =>
                     {
-                        RecordId = s.Id,
-                        Date = s.BookingDate,
-                        SessionTime = GetSessionTimeRange(s.SessionId, s.Session?.SessionEn),
-                        Status = s.Status == 1 ? "Pending" :
-                                 s.Status == 2 ? "Approved" :
-                                 s.Status == 3 ? "Cancelled" :
-                                 s.Status == 4 ? "Rejected" : "Unknown",
-                        StatusCode = s.Status,
-                        IsCancelled = s.Status == 3
+                        // Check if session is past date and still pending - treat as Auto Approved
+                        bool isPastDate = s.BookingDate.Date < today;
+                        int effectiveStatus = s.Status;
+                        string statusText = s.Status == 1 ? "Pending" :
+                                           s.Status == 2 ? "Approved" :
+                                           s.Status == 3 ? "Cancelled" :
+                                           s.Status == 4 ? "Rejected" : "Unknown";
+                        
+                        // If past date and still pending, treat as Auto Approved
+                        if (isPastDate && s.Status == 1)
+                        {
+                            effectiveStatus = 5; // Auto Approved
+                            statusText = "Auto Approved";
+                        }
+                        
+                        return new BookingSessionDetailVM
+                        {
+                            RecordId = s.Id,
+                            Date = s.BookingDate,
+                            SessionTime = GetSessionTimeRange(s.SessionId, s.Session?.SessionEn),
+                            Status = statusText,
+                            StatusCode = effectiveStatus,
+                            IsCancelled = s.Status == 3
+                        };
                     })
                     .OrderBy(s => s.Date)
                     .ToList();
 
                 var activeSessions = allSessions.Where(x => !x.IsCancelled).ToList();
 
-                // Dynamic status calculation based on session statuses
+                // Dynamic status calculation based on EFFECTIVE session statuses (including auto-approved)
                 string bookingStatus;
                 
                 if (activeSessions.Any())
                 {
-                    bool hasApproved = activeSessions.Any(s => s.StatusCode == 2);
+                    bool hasApproved = activeSessions.Any(s => s.StatusCode == 2 || s.StatusCode == 5); // Approved or Auto Approved
                     bool hasPending = activeSessions.Any(s => s.StatusCode == 1);
                     bool hasRejected = activeSessions.Any(s => s.StatusCode == 4);
-                    bool allApproved = activeSessions.All(s => s.StatusCode == 2);
+                    bool allApproved = activeSessions.All(s => s.StatusCode == 2 || s.StatusCode == 5);
                     bool allRejected = activeSessions.All(s => s.StatusCode == 4);
 
                     if (allApproved)
                     {
-                        bookingStatus = "Approved";
+                        // Check if any are auto-approved
+                        bool hasAutoApproved = activeSessions.Any(s => s.StatusCode == 5);
+                        bookingStatus = hasAutoApproved ? "Auto Approved" : "Approved";
                     }
                     else if (allRejected)
                     {

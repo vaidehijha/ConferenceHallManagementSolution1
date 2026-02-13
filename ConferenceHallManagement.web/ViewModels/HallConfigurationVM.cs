@@ -43,18 +43,30 @@ namespace ConferenceHallManagement.web.ViewModels
 
     public class SessionConfigVM
     {
-        public int Id { get; set; }
+        public int SessionId { get; set; }
 
-        [Required(ErrorMessage = "Session Name is required")]
-        public string SessionName { get; set; } = string.Empty;
+        public int HallId { get; set; }
 
-        [Required]
+        [Required(ErrorMessage = "Session Name (English) is required")]
+        [StringLength(200, ErrorMessage = "Session name cannot exceed 200 characters")]
+        public string SessionEn { get; set; } = string.Empty;
+
+        [StringLength(200, ErrorMessage = "Session name cannot exceed 200 characters")]
+        public string SessionHi { get; set; } = string.Empty;
+
+        public bool IsActive { get; set; } = true;
+        
+        // Legacy properties for backward compatibility
+        public string SessionName
+        {
+            get => SessionEn;
+            set => SessionEn = value;
+        }
+
         public DateTime StartTime { get; set; } = DateTime.Today;
-
-        [Required]
+        
         public DateTime EndTime { get; set; } = DateTime.Today;
-
-        [Range(0, double.MaxValue, ErrorMessage = "Price cannot be negative")]
+        
         public decimal Price { get; set; }
     }
 }

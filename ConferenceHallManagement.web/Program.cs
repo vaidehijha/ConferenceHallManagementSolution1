@@ -82,6 +82,7 @@ builder.Services.AddScoped<ConferenceHallManagement.web.Services.HallConfigurati
 builder.Services.AddScoped<IUserBookingService, UserBookingService>();
 builder.Services.AddScoped<IHallConfigurationService, HallConfigurationService>();
 builder.Services.AddScoped<IMasterDataService, MasterDataService>();
+builder.Services.AddScoped<ISessionConfigService, SessionConfigService>();
 
 // --- BUILD ---
 var app = builder.Build();

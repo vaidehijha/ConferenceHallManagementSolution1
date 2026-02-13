@@ -170,6 +170,7 @@
                             <th>Location</th>
                             <th>Admin Approval</th>
                             <th class="text-center">Actions</th>
+                            <th class="text-center">Sessions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -200,6 +201,11 @@
                                     </button>
                                     <button class="btn-action text-danger" title="Delete" @onclick="() => DeleteHall(hall.Id, hall.HallName)">
                                         <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                </td>
+                                <td class="text-center">
+                                    <button class="btn btn-info btn-sm" title="Manage Sessions" @onclick="() => NavigateToSessions(hall.Id)">
+                                        <i class="bi bi-clock-history me-1"></i>Sessions
                                     </button>
                                 </td>
                             </tr>
@@ -463,6 +469,11 @@
     {
         IsFormVisible = false;
         IsRegionError = false;
+    }
+
+    private void NavigateToSessions(int hallId)
+    {
+        Navigation.NavigateTo($"/manage-sessions/{hallId}");
     }
 
     // --- LOGIC ---
