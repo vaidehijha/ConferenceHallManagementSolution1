@@ -5,26 +5,179 @@
 @using Models_ConferenceHallManagement.AppDbModels
 @using UoW_ConferenceHallManagement
 @using System.Security.Claims
+@using ConferenceHallManagement.web.Services
 
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUnitOfWork _uow
+@inject UserSessionService UserSession
 
 <PageTitle>Home - Conference Hall Management</PageTitle>
 
 <style>
-    .hover-card {
-        transition: transform 0.2s, box-shadow 0.2s;
+    .dashboard-card {
+        border-radius: 12px;
+        border: 2px solid;
+        transition: transform 0.3s, box-shadow 0.3s;
         cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: white;
+        position: relative;
     }
 
-        .hover-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 .5rem 1rem rgba(0,0,0,.15) !important;
+    /* Default size for 7 cards (Super Admin) */
+    .card-size-7 .dashboard-card {
+        padding: 1.5rem;
+        min-height: 140px;
+    }
+
+    .card-size-7 .card-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .card-size-7 .card-title-text {
+        font-size: 1.1rem;
+    }
+
+    /* Larger size for 5 cards (Admin) */
+    .card-size-5 .dashboard-card {
+        padding: 2rem;
+        min-height: 160px;
+    }
+
+    .card-size-5 .card-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .card-size-5 .card-title-text {
+        font-size: 1.25rem;
+    }
+
+    /* Even larger size for 2 cards (Normal User) */
+    .card-size-2 .dashboard-card {
+        padding: 2.5rem;
+        min-height: 180px;
+    }
+
+    .card-size-2 .card-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .card-size-2 .card-title-text {
+        font-size: 1.4rem;
+    }
+
+    .dashboard-card:hover {
+        transform: translateY(-8px);
+        box-shadow: 0 8px 25px rgba(0,0,0,.15) !important;
+    }
+
+    .dashboard-card.blue {
+        border-color: #6c9bcf;
+        background-color: #e8f1f8;
+    }
+
+    .dashboard-card.green {
+        border-color: #7ed6a3;
+        background-color: #e8f8ef;
+    }
+
+    .dashboard-card.orange {
+        border-color: #f5b266;
+        background-color: #fef4e8;
+    }
+
+    .dashboard-card.pink {
+        border-color: #f1999b;
+        background-color: #fef0f0;
+    }
+
+    .dashboard-card.purple {
+        border-color: #b19cd9;
+        background-color: #f4f0fa;
+    }
+
+    .dashboard-card.yellow {
+        border-color: #f9d776;
+        background-color: #fffbf0;
+    }
+
+    .card-icon {
+        margin-bottom: 0.8rem;
+    }
+
+    .card-title-text {
+        font-weight: 600;
+        margin: 0;
+        text-align: center;
+    }
+
+    .blue .card-icon { color: #4a7ba7; }
+    .green .card-icon { color: #52b788; }
+    .orange .card-icon { color: #d68910; }
+    .pink .card-icon { color: #d65a5e; }
+    .purple .card-icon { color: #8b6bb7; }
+    .yellow .card-icon { color: #d4a929; }
+
+    .blue .card-title-text { color: #4a7ba7; }
+    .green .card-title-text { color: #52b788; }
+    .orange .card-title-text { color: #d68910; }
+    .pink .card-title-text { color: #d65a5e; }
+    .purple .card-title-text { color: #8b6bb7; }
+    .yellow .card-title-text { color: #d4a929; }
+
+    .cards-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.2rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .cards-row.justify-center {
+        justify-content: center;
+    }
+
+    .card-wrapper {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+
+    @@media (min-width: 768px) {
+        .card-wrapper {
+            width: calc(50% - 0.6rem);
         }
+        
+        /* For 2 cards layout - make them bigger and centered */
+        .card-size-2 .card-wrapper {
+            width: calc(50% - 0.6rem);
+            max-width: 400px;
+        }
+    }
+
+    @@media (min-width: 992px) {
+        .card-wrapper {
+            width: calc(33.333% - 0.8rem);
+        }
+        
+        .card-wrapper.single-centered {
+            width: calc(33.333% - 0.8rem);
+        }
+        
+        /* For 2 cards layout - make them bigger and centered */
+        .card-size-2 .card-wrapper {
+            width: calc(40% - 0.6rem);
+            max-width: 450px;
+        }
+    }
 </style>
 
-<div class="container-fluid py-3">
+<div class="container-fluid py-4 card-size-@TotalCardsCount">
 
     @if (IsLoading)
     {
@@ -32,7 +185,7 @@
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <p class="mt-2">Checking permissions...</p>
+            <p class="mt-2">Loading dashboard...</p>
         </div>
     }
     else if (!IsAuthenticated)
@@ -43,127 +196,92 @@
     }
     else
     {
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3>Welcome, <span class="text-primary">@LoggedInEmpName</span></h3>
-            @if (CurrentUserRoleData != null && CurrentUserRoleData.MasterRole != null)
+        <!-- First Row: 3 cards (Book Hall, My Bookings, Booking Requests) or 2 centered (for normal users) -->
+        <div class="cards-row @(TotalCardsCount == 2 ? "justify-center" : "")">
+            <!-- Book Hall Card - Visible to All -->
+            <div class="card-wrapper">
+                <div class="dashboard-card blue" @onclick='() => NavigateTo("book-hall")'>
+                    <div class="card-icon">
+                        <i class="bi bi-calendar-plus"></i>
+                    </div>
+                    <h5 class="card-title-text">Book Hall</h5>
+                </div>
+            </div>
+
+            <!-- My Bookings Card - Visible to All -->
+            <div class="card-wrapper">
+                <div class="dashboard-card green" @onclick='() => NavigateTo("my-bookings")'>
+                    <div class="card-icon">
+                        <i class="bi bi-journal-text"></i>
+                    </div>
+                    <h5 class="card-title-text">My Bookings</h5>
+                </div>
+            </div>
+
+            @if (IsAdmin)
             {
-                <span class="badge bg-secondary">
-                    @CurrentUserRoleData.MasterRole.RoleName
-                    @if (!string.IsNullOrEmpty(UserRegion))
-                    {
-                        <span>(Reg: @UserRegion)</span>
-                    }
-                </span>
+                <!-- Booking Requests Card - Admin and above -->
+                <div class="card-wrapper">
+                    <div class="dashboard-card orange" @onclick='() => NavigateTo("admin-bookings")'>
+                        <div class="card-icon">
+                            <i class="bi bi-inbox"></i>
+                        </div>
+                        <h5 class="card-title-text">Booking Requests</h5>
+                    </div>
+                </div>
             }
-        </div>
-
-        <h5 class="text-muted border-bottom pb-2">Employee Services</h5>
-        <div class="row g-3 mb-5">
-            <div class="col-md-6 col-lg-3">
-                <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("book-hall")'>
-                    <div class="card-body text-center p-3">
-                        <div class="mb-2">
-                            <i class="bi bi-calendar-plus text-primary" style="font-size: 2.5rem;"></i>
-                        </div>
-                        <h5 class="card-title text-primary mb-2">Book Hall</h5>
-                        <p class="card-text text-muted small mb-2">
-                            Reserve a conference hall.
-                        </p>
-                        <button class="btn btn-primary btn-sm px-4">Book Now</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-6 col-lg-3">
-                <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("my-bookings")'>
-                    <div class="card-body text-center p-3">
-                        <div class="mb-2">
-                            <i class="bi bi-list-check text-success" style="font-size: 2.5rem;"></i>
-                        </div>
-                        <h5 class="card-title text-success mb-2">My Bookings</h5>
-                        <p class="card-text text-muted small mb-2">
-                            Manage your bookings.
-                        </p>
-                        <button class="btn btn-success btn-sm px-4">View Bookings</button>
-                    </div>
-                </div>
-            </div>
         </div>
 
         @if (IsAdmin)
         {
-            <h5 class="text-muted border-bottom pb-2">Admin Panel</h5>
-            <div class="row g-3 mb-5">
-
-                <div class="col-md-4">
-                    <div class="card shadow-sm border-0 h-100 hover-card border-warning" @onclick='() => NavigateTo("admin-bookings")'>
-                        <div class="card-body text-center p-3">
-                            <div class="mb-2">
-                                <i class="bi bi-journal-text text-warning" style="font-size: 2rem;"></i>
-                            </div>
-                            <h5 class="card-title text-dark mb-2">Booking Requests</h5>
-                            <p class="card-text text-muted small mb-2">View and manage requests.</p>
-                            <button class="btn btn-warning btn-sm text-white">View Requests</button>
+            <!-- Second Row: 3 cards (Manage Halls, Employee Roles, Status Master) or 2 centered (for non-super admin) -->
+            <div class="cards-row @(IsSuperAdmin ? "" : "justify-center")">
+                <!-- Manage Halls Card - Admin and above -->
+                <div class="card-wrapper">
+                    <div class="dashboard-card purple" @onclick='() => NavigateTo("manage-halls")'>
+                        <div class="card-icon">
+                            <i class="bi bi-building"></i>
                         </div>
+                        <h5 class="card-title-text">Manage Halls</h5>
                     </div>
                 </div>
 
-                <div class="col-md-4">
-                    <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("manage-halls")'>
-                        <div class="card-body text-center p-3">
-                            <div class="mb-2">
-                                <i class="bi bi-building text-info" style="font-size: 2rem;"></i>
-                            </div>
-                            <h5 class="card-title text-info mb-2">Manage Halls</h5>
-                            <p class="card-text text-muted small mb-2">Add or Edit Halls.</p>
-                            <button class="btn btn-info btn-sm text-white">Manage Halls</button>
+                <!-- Employee Roles Card - Admin and above -->
+                <div class="card-wrapper">
+                    <div class="dashboard-card blue" @onclick='() => NavigateTo("masters/temployee")'>
+                        <div class="card-icon">
+                            <i class="bi bi-people"></i>
                         </div>
+                        <h5 class="card-title-text">Employee Roles</h5>
                     </div>
                 </div>
 
-                <div class="col-md-4">
-                    <div class="card shadow-sm border-0 h-100 hover-card" @onclick='() => NavigateTo("masters/temployee")'>
-                        <div class="card-body text-center p-3">
-                            <div class="mb-2">
-                                <i class="bi bi-people text-success" style="font-size: 2rem;"></i>
+                @if (IsSuperAdmin)
+                {
+                    <!-- Status Master Card - Super Admin only (third card in second row) -->
+                    <div class="card-wrapper">
+                        <div class="dashboard-card pink" @onclick='() => NavigateTo("masters/booking-status")'>
+                            <div class="card-icon">
+                                <i class="bi bi-check-circle"></i>
                             </div>
-                            <h5 class="card-title text-success mb-2">Employee Roles</h5>
-                            <p class="card-text text-muted small mb-2">Assign roles & permissions.</p>
-                            <button class="btn btn-success btn-sm">Manage Roles</button>
+                            <h5 class="card-title-text">Status Master</h5>
                         </div>
                     </div>
-                </div>
+                }
             </div>
         }
 
         @if (IsSuperAdmin)
         {
-            <h5 class="text-muted border-bottom pb-2">Master Settings</h5>
-            <div class="row g-3">
-
-                <div class="col-md-4">
-                    <div class="card shadow-sm border-0 h-100 hover-card border-warning" @onclick='() => NavigateTo("masters/booking-status")'>
-                        <div class="card-body text-center p-3">
-                            <div class="mb-2">
-                                <i class="bi bi-flag text-warning" style="font-size: 2rem;"></i>
-                            </div>
-                            <h5 class="card-title text-warning mb-2">Status Master</h5>
-                            <p class="card-text text-muted small mb-2">Configure status types.</p>
-                            <button class="btn btn-warning btn-sm">Manage Status</button>
+            <!-- Third Row: 1 card centered (Master Room) -->
+            <div class="cards-row justify-center">
+                <!-- Room Types Card - Super Admin only -->
+                <div class="card-wrapper single-centered">
+                    <div class="dashboard-card yellow" @onclick='() => NavigateTo("masters/room-type")'>
+                        <div class="card-icon">
+                            <i class="bi bi-door-open"></i>
                         </div>
-                    </div>
-                </div>
-
-                <div class="col-md-4">
-                    <div class="card shadow-sm border-0 h-100 hover-card border-danger" @onclick='() => NavigateTo("masters/room-type")'>
-                        <div class="card-body text-center p-3">
-                            <div class="mb-2">
-                                <i class="bi bi-door-open text-danger" style="font-size: 2rem;"></i>
-                            </div>
-                            <h5 class="card-title text-danger mb-2">Room Types</h5>
-                            <p class="card-text text-muted small mb-2">Manage room categories.</p>
-                            <button class="btn btn-danger btn-sm">Manage Types</button>
-                        </div>
+                        <h5 class="card-title-text">Master Room</h5>
                     </div>
                 </div>
             </div>
@@ -174,7 +292,6 @@
 @code {
     private bool IsLoading = true;
     private bool IsAuthenticated = false;
-    private string LoggedInEmpName = "User";
 
     private EmpRole? CurrentUserRoleData;
     private string? UserRegion;
@@ -182,6 +299,7 @@
 
     private bool IsAdmin = false;
     private bool IsSuperAdmin = false;
+    private int TotalCardsCount = 2; // Default for normal users
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -201,19 +319,11 @@
         {
             IsAuthenticated = true;
 
-            // --- YAHAN MAIN CHANGE HUA HAI ---
-            // Pehle: user.Identity.Name (Jo ki "Super Admin" naam tha)
-            // Ab: NameIdentifier (Jo ki "10000001" ID hai)
-
-            LoggedInEmpName = user.Identity.Name ?? "User"; // Display ke liye Name thik hai
-
-            // DB Query ke liye ID nikalo
             var empNoClaim = user.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
             string empIdForDb = empNoClaim?.Value ?? "";
 
             try
             {
-                // Ab hum asli ID ("10000001") bhej rahe hain
                 CurrentUserRoleData = await _uow.EmpRole.GetUserRoleDetailsAsync(empIdForDb);
 
                 if (CurrentUserRoleData != null)
@@ -248,6 +358,7 @@
         if (rid >= 1 && rid <= 4)
         {
             IsAdmin = true;
+            TotalCardsCount = 5; // Book Hall, My Bookings, Booking Requests, Manage Halls, Employee Roles
         }
         else
         {
@@ -258,6 +369,7 @@
         if (rid == 1)
         {
             IsSuperAdmin = true;
+            TotalCardsCount = 7; // All admin cards + Status Master + Master Room
         }
         else
         {
